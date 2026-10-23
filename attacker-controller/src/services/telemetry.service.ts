@@ -1,27 +1,42 @@
-import type { TelemetryPayload, AttackTriggerTelemetryData, AttackResultTelemetryData } from '@pbl4/shared';
+import {
+  sendTelemetryEnvelope,
+  TelemetryEnvelope,
+  PacketEventPayload,
+  AttackMode,
+  AttackAction
+} from '@pbl4/shared';
 
-const GOD_VIEW_URL = process.env.GOD_VIEW_URL || 'http://localhost:4000/api/telemetry';
+const HACKER_IP = process.env.HACKER_IP || '172.20.0.66';
+const GOD_VIEW_URL = process.env.GOD_VIEW_URL || 'http://172.20.0.99:4000/api/telemetry';
 
-export async function sendAttackerTelemetry(
-  eventType: 'ATTACK_TRIGGERED' | 'ATTACK_RESULT' | 'SECURITY_ALERT',
-  severity: 'INFO' | 'WARNING' | 'CRITICAL',
-  data: AttackTriggerTelemetryData | AttackResultTelemetryData | Record<string, unknown>
+export async function sendHackerPacketEvent(
+  attackMode: AttackMode,
+  action: AttackAction,
+  terminalLog: string,
+  packetInfo: {
+    protocol: 'HTTP' | 'TCP' | 'ARP' | string;
+    src: string;
+    dst: string;
+    flags?: 'PA' | 'S' | 'R' | string;
+    seq_num?: number;
+    extracted_data?: string;
+  }
 ): Promise<void> {
-  const payload: TelemetryPayload = {
-    timestamp: new Date().toISOString(),
-    source: 'ATTACKER_CONTROLLER',
-    eventType,
-    severity,
-    data: data as Record<string, unknown>
+  const payload: PacketEventPayload = {
+    attack_mode: attackMode,
+    action,
+    packet_info: packetInfo,
+    terminal_log: terminalLog
   };
 
-  try {
-    await fetch(GOD_VIEW_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-  } catch {
-    // Không làm sập controller nếu God-View Server chưa online
-  }
+  const envelope: TelemetryEnvelope<PacketEventPayload> = {
+    timestamp: Date.now(),
+    source_node: 'HACKER',
+    source_ip: HACKER_IP,
+    event_type: 'PACKET_EVENT',
+    severity: 'DANGER',
+    payload
+  };
+
+  await sendTelemetryEnvelope(envelope, GOD_VIEW_URL);
 }

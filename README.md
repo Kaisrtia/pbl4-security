@@ -1,71 +1,59 @@
 # PBL4 - Hệ Thống Mô Phỏng & Giám Sát Tấn Công Mạng (Cyber Attack Simulation & Monitoring System)
 
-## 📌 Tổng Quan Kiến Trúc Dự Án
-
-Hệ thống được chia thành 3 phân hệ độc lập tương ứng với nhiệm vụ của 3 thành viên:
-
-| Phân hệ | Người phụ trách | Địa chỉ / Cổng (Port) | Chức năng chính & Endpoint bắt buộc |
-| :--- | :--- | :--- | :--- |
-| **Target App & Server** | Thành viên 1 | `http://localhost:3000` | • `POST /api/login`: Đăng nhập nhận Session/Token<br>• `GET /api/resources`: Lấy danh sách tài nguyên mật<br>• Cố tình chứa lỗ hổng (SQLi, MITM/HTTP cleartext, Brute-force)<br>• Logger Middleware phát telemetry JSON về God-View |
-| **Attacker Controller** | Thành viên 2 | `http://localhost:5000` *(hoặc CLI)* | • `POST /attack/mitm`: Bật/tắt nghe lén trên đường truyền<br>• `POST /attack/sqli`: Bắn payload SQL Injection vào cổng 3000<br>• `POST /attack/dos`: Bắn DoS 50 requests/giây vào cổng 3000 |
-| **God-View Server & UI** | Thành viên 3 | `http://localhost:4000` | • `POST /api/telemetry`: Thu thập toàn bộ telemetry JSON từ TV1 và TV2<br>• `ws://localhost:4000`: WebSocket đẩy dữ liệu real-time lên giao diện quan sát |
+**Mã hạng mục:** T1-ALL (Milestone 1 - Tuần 1)  
+**Nhóm sinh viên thực hiện:**
+- **Trung (T1-TV1):** Phụ trách `client_node` (172.20.0.10) & `target_server` (172.20.0.20)
+- **Trí (T1-TV2):** Phụ trách `hacker_node` (172.20.0.66)
+- **Nguyên (T1-TV3):** Phụ trách `god_view` (172.20.0.99)
 
 ---
 
-## 🗂️ Cấu Trúc Thư Mục (Project Structure)
+## 📌 1. Kiến Trúc Mạng Docker (4 Containers - `cyber_net: 172.20.0.0/24`)
 
-```text
-PBL4/
-├── docs/                             # Tài liệu kỹ thuật, đặc tả API và Telemetry
-│   ├── system-architecture.md        # Kiến trúc tổng thể và luồng truyền dữ liệu
-│   └── telemetry-spec.md             # Thống nhất chuẩn JSON Telemetry (Chặng 0)
-│
-├── target-app/                       # [Thành viên 1] Môi trường Đích (Target App & Server - Port 3000)
-│   ├── client/                       # Giao diện Form Đăng nhập & Hiển thị tài nguyên
-│   └── server/                       # Backend API chứa lỗ hổng & Logger Middleware
-│       ├── database/                 # Script khởi tạo CSDL (bảng Users, Resources)
-│       ├── middlewares/              # Logger Middleware bắn telemetry về God-View
-│       ├── routes/                   # Định tuyến API (/api/login, /api/resources)
-│       └── src/                      # Source code chính của server
-│
-├── attacker-controller/              # [Thành viên 2] Trạm điều khiển Hacker (Port 5000 / CLI)
-│   ├── attacks/                      # Các module kịch bản tấn công
-│   │   ├── dos/                      # Kịch bản DoS (50 req/giây)
-│   │   ├── mitm/                     # Kịch bản bắt gói / nghe lén đường truyền
-│   │   └── sqli/                     # Kịch bản khai thác SQL Injection
-│   ├── server/                       # Controller Server (hoặc script CLI) quản lý kích hoạt
-│   └── scripts/                      # Script chạy nhanh tấn công qua dòng lệnh
-│
-├── god-view/                         # [Thành viên 3] Trạm quan sát Thượng Đế (Port 4000)
-│   ├── client/                       # Dashboard Web UI (hiển thị biểu đồ, log realtime)
-│   └── server/                       # Backend Server thu thập telemetry & phát WebSocket
-│       ├── routes/                   # Endpoint nhận telemetry (POST /api/telemetry)
-│       └── websocket/                # WebSocket Gateway (ws://localhost:4000)
-│
-├── docker-compose.yml                # File cấu hình khởi chạy đồng bộ cả 3 dịch vụ
-└── README.md                         # Tài liệu hướng dẫn chung của dự án
+| Tên Container | Vai trò | IP tĩnh | Port nội bộ | Port Host | Phụ trách chính |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`client_node`** | Giả lập người dùng (Gửi HTTP Login & giữ TCP) | `172.20.0.10` | 3000 | 3000 | Trung (T1-TV1) |
+| **`target_server`** | App Server + Database (SQLite) + OS Agent đọc bảng mạng | `172.20.0.20` | 8080 (HTTP)<br>9000 (TCP) | 8080 | Trung (T1-TV1) |
+| **`hacker_node`** | Máy tấn công (Chứa script ARP, SYN Flood, TCP RST) | `172.20.0.66` | 5000 (Control API) | *Không mở* | Trí (T1-TV2) |
+| **`god_view`** | WebSocket Server thu thập log & Giao diện Thượng đế | `172.20.0.99` | 4000 (WS/API)<br>5173 (Web UI) | 4000<br>5173 | Nguyên (T1-TV3) |
+
+---
+
+## ⚔️ 2. Ba Kịch Bản Tấn Công Chính (L2 & L4)
+1. **Kịch bản 1: ARP Spoofing + Sniffing (Lớp 2 - Data Link)**
+   - Lệnh: `arpspoof -i eth0 -t 172.20.0.10 -r 172.20.0.20`
+   - Bảng ARP bị ghi đè, bẻ cong gói tin đăng nhập đi qua Hacker, Scapy giải mã mật khẩu.
+2. **Kịch bản 2: TCP SYN Flood bằng `hping3` (Lớp 4 - Transport)**
+   - Lệnh: `hping3 -S -p 8080 --rand-source --interval u1000 172.20.0.20`
+   - Gây nghẽn hàng đợi `SYN_RECV`, Client bị Timeout. Phòng thủ bằng `sysctl -w net.ipv4.tcp_syncookies=1`.
+3. **Kịch bản 3: TCP RST Injection bằng `tcpkill` / Scapy (Lớp 4 - Cắt đứt kết nối)**
+   - Lệnh: `tcpkill -i eth0 host 172.20.0.10 and port 8080`
+   - Bơm gói TCP RST giả mạo, ngắt kết nối `ESTABLISHED` ngay lập tức.
+*(Kịch bản mở rộng: Tấn công Web SQL Injection `' OR 1=1 --`).*
+
+---
+
+## 👁️ 3. Giao Diện God-View Dashboard (4 Khu Vực Trực Quan)
+1. **Khu vực 1 (Giữa màn hình):** Sơ đồ Topology Mạng (3 node: Client ↔ Server và Hacker; vẽ hiệu ứng hạt dữ liệu bay & đổi màu theo trạng thái tấn công).
+2. **Khu vực 2 (Góc trái dưới):** Bảng ARP Cache (tự động báo đỏ `POISONED!` khi bị ARP Spoofing).
+3. **Khu vực 3 (Góc phải trên):** Bảng trạng thái TCP & OS Config (thanh `syn_cookies: OFF/ON`, bộ đếm `SYN_RECV`, danh sách `ESTABLISHED`).
+4. **Khu vực 4 (Góc dưới cùng):** Live Terminal Log (nối chuỗi `terminal_log` từ cả 3 node theo thời gian: Xanh dương = Client, Xanh lá = Server, Đỏ = Hacker).
+
+---
+
+## 📡 4. Chuẩn Hóa Bản Tin Telemetry JSON (Chặng 0)
+- **Endpoint nhận sự kiện:** `POST http://172.20.0.99:4000/api/telemetry`
+- **Kênh WebSocket đẩy lên UI:** `ws://localhost:4000` (event: `"GOD_VIEW_UPDATE"`)
+- **Chi tiết Envelope & Payloads:** Xem tại [`docs/telemetry-spec.md`](./docs/telemetry-spec.md).
+
+---
+
+## 🚀 5. Khởi Chạy Hệ Thống
+
+```bash
+# Khởi chạy toàn bộ 4 containers trong mạng cyber_net
+docker compose up -d
+
+# Xem log God-View
+docker logs -f god_view
 ```
-
----
-
-## 🔄 Luồng Hoạt Động (Data Flow)
-
-```text
-  [ Attacker Controller ] (Port 5000)
-       |                \
- (Attacks: MITM/SQLi/DoS)\ (Telemetry: Attack Actions)
-       v                  v
-  [ Target App & Server ] ──(Telemetry: Access/Errors)──> [ God-View Server ] (Port 4000)
-       (Port 3000)                                                  | (WebSocket)
-                                                                    v
-                                                            [ God-View Dashboard UI ]
-```
-
----
-
-## 🚀 Kế Hoạch Triển Khai
-
-1. **Chặng 0 (Thống nhất toàn đội)**: Thống nhất format JSON tại [`docs/telemetry-spec.md`](./docs/telemetry-spec.md).
-2. **Chặng 1 (Thành viên 1)**: Xây dựng Target App & Server, tạo DB, chừa lỗ hổng có chủ đích và tích hợp telemetry logger.
-3. **Chặng 2 (Thành viên 2)**: Xây dựng các kịch bản tấn công khai thác vào Target App và ghi nhận telemetry.
-4. **Chặng 3 (Thành viên 3)**: Xây dựng Dashboard và Server thu thập để trực quan hóa toàn bộ tiến trình.

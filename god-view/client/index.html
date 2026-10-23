@@ -3,18 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>God-View SIEM & Attack Monitor (Port 4000)</title>
+  <title>God-View Real-Time Cyber Monitor (PBL4 - Milestone 1)</title>
   <style>
     :root {
-      --bg: #090d16;
-      --card-bg: #131b2e;
-      --border: #1e293b;
-      --text: #f1f5f9;
-      --text-muted: #94a3b8;
-      --accent-blue: #38bdf8;
-      --accent-red: #f43f5e;
-      --accent-green: #10b981;
-      --accent-yellow: #f59e0b;
+      --bg: #0b0f19;
+      --card-bg: #121826;
+      --border: #1f293d;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --client-blue: #3b82f6;
+      --server-green: #10b981;
+      --hacker-red: #ef4444;
+      --warn-orange: #f59e0b;
     }
     * { box-sizing: border-box; }
     body {
@@ -22,167 +22,308 @@
       background: var(--bg);
       color: var(--text);
       margin: 0;
-      padding: 20px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
     }
     header {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      padding-bottom: 12px;
       border-bottom: 1px solid var(--border);
-      padding-bottom: 15px;
-      margin-bottom: 20px;
+      margin-bottom: 12px;
     }
     .header-title h1 {
       margin: 0;
-      font-size: 22px;
-      color: var(--accent-blue);
-      letter-spacing: 0.5px;
-    }
-    .header-title p {
-      margin: 4px 0 0;
-      font-size: 13px;
-      color: var(--text-muted);
-    }
-    .status-badge {
-      display: inline-flex;
+      font-size: 20px;
+      color: #60a5fa;
+      display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 6px 14px;
-      border-radius: 20px;
-      font-size: 13px;
-      background: #022c22;
-      color: var(--accent-green);
-      border: 1px solid #065f46;
-    }
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: currentColor;
-    }
-    .grid-stats {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 15px;
-      margin-bottom: 25px;
-    }
-    .stat-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 16px;
-    }
-    .stat-card .label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; }
-    .stat-card .val { font-size: 26px; font-weight: bold; margin-top: 8px; }
-
-    .main-grid {
-      display: grid;
-      grid-template-columns: 2fr 1fr;
-      gap: 20px;
-    }
-    @media (max-width: 900px) {
-      .main-grid { grid-template-columns: 1fr; }
-    }
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 18px;
-    }
-    .card-title {
-      margin-top: 0;
-      font-size: 16px;
-      color: var(--accent-blue);
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 10px;
-      margin-bottom: 15px;
-    }
-    .log-stream {
-      display: flex;
-      flex-direction: column;
       gap: 10px;
-      max-height: 520px;
-      overflow-y: auto;
     }
-    .log-entry {
-      background: #0b1120;
-      border-left: 4px solid var(--border);
-      border-radius: 4px;
-      padding: 10px 14px;
-      font-family: monospace;
-      font-size: 13px;
-    }
-    .log-entry.INFO { border-color: var(--accent-blue); }
-    .log-entry.WARNING { border-color: var(--accent-yellow); }
-    .log-entry.CRITICAL { border-color: var(--accent-red); background: rgba(244, 63, 94, 0.08); }
-    .log-meta {
-      display: flex;
-      justify-content: space-between;
-      color: var(--text-muted);
-      font-size: 11px;
-      margin-bottom: 6px;
-    }
-    .tag {
-      padding: 2px 6px;
-      border-radius: 4px;
+    .header-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+    .badge {
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
       font-weight: bold;
     }
-    .tag-TARGET_SERVER { background: #1e3a8a; color: #93c5fd; }
-    .tag-ATTACKER_CONTROLLER { background: #831843; color: #fbcfe8; }
+    .badge-live { background: #064e3b; color: #34d399; border: 1px solid #059669; }
+
+    /* Layout 4 khu vực */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      grid-template-rows: 1.4fr 1fr;
+      gap: 14px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .panel {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #93c5fd;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 0;
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* KHU VỰC 1: Topology Map */
+    .topology-container {
+      position: relative;
+      flex: 1;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      background: #070a12;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .node {
+      width: 120px;
+      height: 90px;
+      background: #1e293b;
+      border: 2px solid #334155;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 5;
+      transition: all 0.3s ease;
+    }
+    .node-title { font-size: 13px; font-weight: bold; }
+    .node-ip { font-size: 11px; color: var(--text-muted); font-family: monospace; }
+    .node-client { border-color: var(--client-blue); }
+    .node-server { border-color: var(--server-green); }
+    .node-hacker { border-color: var(--hacker-red); }
+    .node-danger-pulse { animation: pulseDanger 0.8s infinite alternate; }
+
+    @keyframes pulseDanger {
+      0% { box-shadow: 0 0 5px var(--hacker-red); border-color: var(--hacker-red); }
+      100% { box-shadow: 0 0 25px var(--hacker-red); border-color: #ff0055; }
+    }
+
+    /* Sợi dây mạng SVG */
+    .topology-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    /* KHU VỰC 2: Bảng ARP Cache */
+    .table-container {
+      flex: 1;
+      overflow-y: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      font-family: monospace;
+    }
+    th, td {
+      padding: 8px 10px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    th { background: #0f172a; color: #94a3b8; }
+    .row-poisoned {
+      background: rgba(239, 68, 68, 0.25) !important;
+      color: #fca5a5;
+      font-weight: bold;
+    }
+
+    /* KHU VỰC 3: TCP Status & OS Config */
+    .tcp-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .stat-box {
+      background: #0f172a;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .stat-label { font-size: 11px; color: var(--text-muted); }
+    .stat-value { font-size: 18px; font-weight: bold; margin-top: 4px; }
+
+    /* KHU VỰC 4: Live Terminal Log */
+    .terminal-container {
+      flex: 1;
+      background: #050811;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 10px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 12px;
+      overflow-y: auto;
+      line-height: 1.5;
+    }
+    .log-client { color: #60a5fa; }
+    .log-server { color: #34d399; }
+    .log-hacker { color: #f87171; }
+    .log-sys { color: #eab308; }
   </style>
 </head>
 <body>
 
   <header>
     <div class="header-title">
-      <h1>God-View Realtime Telemetry Monitor (Port 4000)</h1>
-      <p>Trạm Quan Sát Thượng Đế - Giám sát luồng thông tin mạng giữa Target và Attacker</p>
+      <h1>🌐 God-View Live Cyber Topology Monitor</h1>
+      <div class="header-sub">Hệ thống Quan Sát Mạng Thời Gian Thực (Milestone 1 - Tuần 1)</div>
     </div>
-    <div id="wsStatus" class="status-badge">
-      <span class="status-dot"></span>
-      <span id="wsStatusText">WebSocket: Đang kết nối...</span>
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <span id="synCookieBadge" class="badge" style="background: #374151; color: #d1d5db;">SYN COOKIES: OFF</span>
+      <span id="wsStatusBadge" class="badge badge-live">WEBSOCKET: CONNECTED</span>
     </div>
   </header>
 
-  <section class="grid-stats">
-    <div class="stat-card">
-      <div class="label">Tổng Bản Tin Telemetry</div>
-      <div class="val" id="countTotal" style="color: var(--accent-blue);">0</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Cảnh Báo SQL Injection</div>
-      <div class="val" id="countSqli" style="color: var(--accent-yellow);">0</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Lưu Lượng DoS Phát Hiện</div>
-      <div class="val" id="countDos" style="color: var(--accent-red);">0</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Nghe Lén MITM Phát Hiện</div>
-      <div class="val" id="countMitm" style="color: #a855f7;">0</div>
-    </div>
-  </section>
+  <div class="dashboard-grid">
+    <!-- KHU VỰC 1: Sơ đồ Topology Mạng (Giữa / Trái trên) -->
+    <div class="panel">
+      <div class="panel-title">
+        <span>Khu Vực 1: Sơ Đồ Topology Mạng (172.20.0.0/24)</span>
+        <span id="attackModeTag" style="font-size: 11px; color: #10b981;">TRẠNG THÁI: BÌNH THƯỜNG</span>
+      </div>
+      <div class="topology-container" id="topologyMap">
+        <svg class="topology-svg" id="topologySvg">
+          <!-- Đường kết nối bình thường Client <-> Server -->
+          <line id="lineNormal" x1="20%" y1="50%" x2="80%" y2="50%" stroke="#10b981" stroke-width="3" stroke-dasharray="6,4" />
+          <!-- Đường bẻ cong qua Hacker (ARP Spoof) -->
+          <path id="pathArpSpoof" d="M 20% 50% Q 50% 20% 80% 50%" stroke="#f59e0b" stroke-width="3" fill="none" opacity="0" />
+          <!-- Đường Hacker bắn phá Server (SYN Flood / RST) -->
+          <line id="lineHackerAttack" x1="50%" y1="20%" x2="80%" y2="50%" stroke="#ef4444" stroke-width="3" opacity="0" />
+        </svg>
 
-  <div class="main-grid">
-    <div class="card">
-      <h3 class="card-title">Luồng Bản Tin Thời Gian Thực (Live Telemetry Stream)</h3>
-      <div id="logStream" class="log-stream">
-        <div style="color: #64748b; text-align: center; padding: 20px;">Đang lắng nghe bản tin từ Target Server và Attacker Controller...</div>
+        <!-- Node 1: Client -->
+        <div class="node node-client" style="position: absolute; left: 10%; top: 40%;">
+          <span class="node-title" style="color: var(--client-blue);">CLIENT</span>
+          <span class="node-ip">172.20.0.10</span>
+          <span style="font-size: 10px; color: #94a3b8; margin-top: 4px;">Port: 3000</span>
+        </div>
+
+        <!-- Node 3: Hacker (ở trên giữa) -->
+        <div class="node node-hacker" id="nodeHacker" style="position: absolute; left: 42%; top: 5%;">
+          <span class="node-title" style="color: var(--hacker-red);">HACKER</span>
+          <span class="node-ip">172.20.0.66</span>
+          <span style="font-size: 10px; color: #94a3b8; margin-top: 4px;">L2/L4 Attack</span>
+        </div>
+
+        <!-- Node 2: Target Server -->
+        <div class="node node-server" id="nodeServer" style="position: absolute; right: 10%; top: 40%;">
+          <span class="node-title" style="color: var(--server-green);">TARGET SERVER</span>
+          <span class="node-ip">172.20.0.20</span>
+          <span style="font-size: 10px; color: #94a3b8; margin-top: 4px;">Port: 8080/9000</span>
+        </div>
       </div>
     </div>
 
-    <div class="card">
-      <h3 class="card-title">Trạng Thái Các Phân Hệ</h3>
-      <div style="font-size: 14px; line-height: 1.8;">
-        <p><strong>🎯 Target App (TV1):</strong> <code>http://localhost:3000</code></p>
-        <p><strong>⚔️ Attacker Controller (TV2):</strong> <code>http://localhost:5000</code></p>
-        <p><strong>👁️ God-View Hub (TV3):</strong> <code>http://localhost:4000</code></p>
-        <hr style="border: 0; border-top: 1px solid var(--border); margin: 15px 0;">
-        <p style="font-size: 13px; color: var(--text-muted);">
-          Giao thức kết nối: <br>
-          - Telemetry Ingest: <code>POST /api/telemetry</code><br>
-          - WebSockets Stream: <code>ws://localhost:4000</code>
-        </p>
+    <!-- KHU VỰC 3: Bảng Trạng Thái TCP & OS Config (Góc phải trên) -->
+    <div class="panel">
+      <div class="panel-title">
+        <span>Khu Vực 3: Trạng Thái TCP & OS Config</span>
+        <button id="btnDefenseToggle" style="background: #0284c7; border: none; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">Toggle SYN Cookies</button>
+      </div>
+      <div class="tcp-stats-grid">
+        <div class="stat-box">
+          <div class="stat-label">ESTABLISHED</div>
+          <div class="stat-value" id="countEstablished" style="color: #38bdf8;">1</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">SYN_RECV (Backlog)</div>
+          <div class="stat-value" id="countSynRecv" style="color: #ef4444;">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">TIME_WAIT</div>
+          <div class="stat-value" id="countTimeWait">2</div>
+        </div>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Local Address</th>
+              <th>Remote Address</th>
+              <th>State</th>
+            </tr>
+          </thead>
+          <tbody id="tcpConnectionsBody">
+            <tr>
+              <td>172.20.0.20:8080</td>
+              <td>172.20.0.10:54322</td>
+              <td><span style="color: #34d399; font-weight: bold;">ESTABLISHED</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- KHU VỰC 2: Bảng ARP Cache (Góc trái dưới) -->
+    <div class="panel">
+      <div class="panel-title">
+        <span>Khu Vực 2: Bảng ARP Cache (Client & Server)</span>
+        <span id="arpStatusTag" style="font-size: 11px; color: #10b981;">CLEAN</span>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>IP Address</th>
+              <th>MAC Address</th>
+              <th>Trạng Thái</th>
+            </tr>
+          </thead>
+          <tbody id="arpTableBody">
+            <tr>
+              <td>172.20.0.10</td>
+              <td>02:42:ac:14:00:0a</td>
+              <td><span style="color: #10b981;">OK (Client)</span></td>
+            </tr>
+            <tr>
+              <td>172.20.0.66</td>
+              <td>02:42:ac:14:00:42</td>
+              <td><span style="color: #64748b;">Hacker Node</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- KHU VỰC 4: Live Terminal Log (Góc dưới cùng / Phải dưới) -->
+    <div class="panel">
+      <div class="panel-title">
+        <span>Khu Vực 4: Live Terminal Log (Nối Chuỗi Sự Kiện Cả 3 Node)</span>
+        <button id="btnClearLogs" style="background: #374151; border: none; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; cursor: pointer;">Clear</button>
+      </div>
+      <div class="terminal-container" id="terminalLogBox">
+        <div class="log-sys">[SYSTEM] Khởi động God-View Ingestion Engine tại ws://localhost:4000...</div>
+        <div class="log-client">[CLIENT 172.20.0.10] Đã kết nối phiên TCP tới 172.20.0.20:8080 (ESTABLISHED)</div>
+        <div class="log-server">[SERVER 172.20.0.20] OS Agent đang đọc ARP table và TCP table định kỳ...</div>
       </div>
     </div>
   </div>
