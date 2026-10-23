@@ -11,4 +11,5 @@ RUN npm run build --workspace=shared
 RUN npm run build --workspace=god-view/server
 
 EXPOSE 4000
+EXPOSE 5173
 CMD ["npm", "run", "start", "--workspace=god-view/server"]

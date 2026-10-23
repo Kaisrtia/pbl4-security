@@ -1,6 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'http';
-import type { TelemetryPayload } from '@pbl4/shared';
+import type { TelemetryEnvelope } from '@pbl4/shared';
 
 let wss: WebSocketServer | null = null;
 const connectedClients = new Set<WebSocket>();
@@ -12,21 +12,26 @@ export function setupWebSocket(httpServer: Server): WebSocketServer {
     connectedClients.add(ws);
     console.log(`[God-View WS] Client kết nối mới. Tổng client: ${connectedClients.size}`);
 
-    // Gửi message chào mừng
+    // Gửi event chào mừng
     ws.send(
       JSON.stringify({
-        type: 'SYSTEM',
-        message: 'Connected to God-View Realtime Telemetry Stream'
+        event: 'GOD_VIEW_UPDATE',
+        data: {
+          event_type: 'APP_EVENT',
+          source_node: 'SERVER',
+          payload: {
+            action: 'LOGIN_ATTEMPT',
+            terminal_log: '[GOD-VIEW] Sẵn sàng nhận luồng dữ liệu từ cyber_net (172.20.0.0/24)'
+          }
+        }
       })
     );
 
     ws.on('close', () => {
       connectedClients.delete(ws);
-      console.log(`[God-View WS] Client ngắt kết nối. Còn lại: ${connectedClients.size}`);
     });
 
-    ws.on('error', (err) => {
-      console.error('[God-View WS] Lỗi socket:', err.message);
+    ws.on('error', () => {
       connectedClients.delete(ws);
     });
   });
@@ -34,8 +39,12 @@ export function setupWebSocket(httpServer: Server): WebSocketServer {
   return wss;
 }
 
-export function broadcastTelemetry(payload: TelemetryPayload): void {
-  const message = JSON.stringify(payload);
+export function broadcastTelemetry(envelope: TelemetryEnvelope): void {
+  const message = JSON.stringify({
+    event: 'GOD_VIEW_UPDATE',
+    data: envelope
+  });
+
   for (const client of connectedClients) {
     if (client.readyState === WebSocket.OPEN) {
       client.send(message);

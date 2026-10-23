@@ -9,5 +9,6 @@ RUN npm install
 RUN npm run build --workspace=shared
 RUN npm run build --workspace=target-app/server
 
-EXPOSE 3000
+EXPOSE 8080
+EXPOSE 9000
 CMD ["npm", "run", "start", "--workspace=target-app/server"]

@@ -1,45 +1,41 @@
 import { Router, Request, Response } from 'express';
-import type { TelemetryPayload } from '@pbl4/shared';
+import type { TelemetryEnvelope } from '@pbl4/shared';
 import { broadcastTelemetry } from '../websocket/ws.server.js';
 
 export const telemetryRouter = Router();
 
-// Lưu giữ 200 telemetry gần nhất trong bộ nhớ để client mới vào xem lại
-export const recentTelemetryLogs: TelemetryPayload[] = [];
+export const recentTelemetryLogs: TelemetryEnvelope[] = [];
 
 /**
  * POST /api/telemetry
- * Nhận bản tin JSON từ TV1 (Target Server) và TV2 (Attacker Controller)
+ * Nhận bản tin JSON từ Trung (T1-TV1) và Trí (T1-TV2) gửi về
  */
 telemetryRouter.post('/telemetry', (req: Request, res: Response) => {
-  const payload = req.body as TelemetryPayload;
+  const envelope = req.body as TelemetryEnvelope;
 
-  if (!payload || !payload.source || !payload.eventType) {
-    return res.status(400).json({ error: 'Invalid telemetry payload structure' });
+  if (!envelope || !envelope.source_node || !envelope.event_type) {
+    return res.status(400).json({ error: 'Invalid telemetry envelope format' });
   }
 
-  // Gán timestamp nếu thiếu
-  if (!payload.timestamp) {
-    payload.timestamp = new Date().toISOString();
+  if (!envelope.timestamp) {
+    envelope.timestamp = Date.now();
   }
 
-  console.log(`[God-View Telemetry] Received from [${payload.source}] - [${payload.eventType}] (${payload.severity})`);
+  console.log(`[God-View Telemetry] [${envelope.source_node} - ${envelope.source_ip}] -> ${envelope.event_type} (${envelope.severity})`);
 
-  // Lưu log
-  recentTelemetryLogs.push(payload);
+  recentTelemetryLogs.push(envelope);
   if (recentTelemetryLogs.length > 200) {
     recentTelemetryLogs.shift();
   }
 
-  // Đẩy thẳng qua WebSocket đến giao diện Web
-  broadcastTelemetry(payload);
+  // Phát WebSocket lên giao diện với định dạng { event: "GOD_VIEW_UPDATE", data: envelope }
+  broadcastTelemetry(envelope);
 
-  return res.status(200).json({ status: 'received', timestamp: payload.timestamp });
+  return res.status(200).json({ status: 'received', timestamp: envelope.timestamp });
 });
 
 /**
  * GET /api/telemetry/history
- * Lấy danh sách lịch sử telemetry
  */
 telemetryRouter.get('/telemetry/history', (req: Request, res: Response) => {
   res.json({ total: recentTelemetryLogs.length, logs: recentTelemetryLogs });

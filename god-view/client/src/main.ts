@@ -1,20 +1,34 @@
-import type { TelemetryPayload } from '@pbl4/shared';
+import type {
+  TelemetryEnvelope,
+  StateSnapshotPayload,
+  PacketEventPayload,
+  AppEventPayload
+} from '@pbl4/shared';
 
-const wsStatus = document.getElementById('wsStatus') as HTMLDivElement;
-const wsStatusText = document.getElementById('wsStatusText') as HTMLSpanElement;
-const logStream = document.getElementById('logStream') as HTMLDivElement;
+// DOM Elements
+const wsStatusBadge = document.getElementById('wsStatusBadge') as HTMLSpanElement;
+const synCookieBadge = document.getElementById('synCookieBadge') as HTMLSpanElement;
+const attackModeTag = document.getElementById('attackModeTag') as HTMLSpanElement;
+const arpStatusTag = document.getElementById('arpStatusTag') as HTMLSpanElement;
 
-const countTotal = document.getElementById('countTotal') as HTMLDivElement;
-const countSqli = document.getElementById('countSqli') as HTMLDivElement;
-const countDos = document.getElementById('countDos') as HTMLDivElement;
-const countMitm = document.getElementById('countMitm') as HTMLDivElement;
+// Topology elements
+const lineNormal = document.getElementById('lineNormal') as unknown as SVGLineElement;
+const pathArpSpoof = document.getElementById('pathArpSpoof') as unknown as SVGPathElement;
+const lineHackerAttack = document.getElementById('lineHackerAttack') as unknown as SVGLineElement;
+const nodeServer = document.getElementById('nodeServer') as HTMLDivElement;
 
-let totalCount = 0;
-let sqliCount = 0;
-let dosCount = 0;
-let mitmCount = 0;
-let hasReceivedLogs = false;
+// Stats
+const countEstablished = document.getElementById('countEstablished') as HTMLDivElement;
+const countSynRecv = document.getElementById('countSynRecv') as HTMLDivElement;
+const countTimeWait = document.getElementById('countTimeWait') as HTMLDivElement;
 
+// Tables
+const arpTableBody = document.getElementById('arpTableBody') as HTMLTableSectionElement;
+const tcpConnectionsBody = document.getElementById('tcpConnectionsBody') as HTMLTableSectionElement;
+const terminalLogBox = document.getElementById('terminalLogBox') as HTMLDivElement;
+const btnClearLogs = document.getElementById('btnClearLogs') as HTMLButtonElement;
+
+// WebSocket connection
 function connectWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}`;
@@ -22,80 +36,158 @@ function connectWebSocket() {
   const ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
-    wsStatus.style.background = '#022c22';
-    wsStatus.style.color = '#10b981';
-    wsStatus.style.borderColor = '#065f46';
-    wsStatusText.textContent = 'WebSocket: Đã kết nối';
+    wsStatusBadge.textContent = 'WEBSOCKET: CONNECTED';
+    wsStatusBadge.className = 'badge badge-live';
   };
 
   ws.onclose = () => {
-    wsStatus.style.background = '#450a0a';
-    wsStatus.style.color = '#f87171';
-    wsStatus.style.borderColor = '#991b1b';
-    wsStatusText.textContent = 'WebSocket: Mất kết nối (Thử lại sau 3s...)';
+    wsStatusBadge.textContent = 'WEBSOCKET: DISCONNECTED';
+    wsStatusBadge.style.background = '#7f1d1d';
+    wsStatusBadge.style.color = '#fca5a5';
     setTimeout(connectWebSocket, 3000);
-  };
-
-  ws.onerror = () => {
-    ws.close();
   };
 
   ws.onmessage = (event) => {
     try {
-      const payload = JSON.parse(event.data) as TelemetryPayload;
-      if (!payload.source || !payload.eventType) return;
-      handleTelemetryMessage(payload);
+      const message = JSON.parse(event.data);
+      // Hỗ trợ cả envelope bọc trong event "GOD_VIEW_UPDATE" hoặc bản tin trực tiếp
+      const envelope: TelemetryEnvelope = message.data || message;
+      handleTelemetry(envelope);
     } catch {
-      // Bỏ qua message không phải JSON
+      // Ignore parse error
     }
   };
 }
 
-function handleTelemetryMessage(payload: TelemetryPayload) {
-  if (!hasReceivedLogs) {
-    logStream.innerHTML = '';
-    hasReceivedLogs = true;
-  }
+function handleTelemetry(envelope: TelemetryEnvelope) {
+  if (!envelope || !envelope.event_type) return;
 
-  totalCount++;
-  countTotal.textContent = totalCount.toString();
-
-  const dataStr = JSON.stringify(payload.data || {});
-  if (dataStr.includes('SQL_INJECTION') || (payload.data as any)?.attackType === 'SQL_INJECTION') {
-    sqliCount++;
-    countSqli.textContent = sqliCount.toString();
+  switch (envelope.event_type) {
+    case 'STATE_SNAPSHOT':
+      handleStateSnapshot(envelope.payload as StateSnapshotPayload);
+      break;
+    case 'PACKET_EVENT':
+    case 'ATTACK_STATUS':
+      handlePacketEvent(envelope.payload as PacketEventPayload);
+      break;
+    case 'APP_EVENT':
+      handleAppEvent(envelope.payload as AppEventPayload, envelope.source_node);
+      break;
   }
-  if (dataStr.includes('DOS') || (payload.data as any)?.attackType === 'DOS') {
-    dosCount++;
-    countDos.textContent = dosCount.toString();
-  }
-  if (dataStr.includes('MITM') || (payload.data as any)?.attackType === 'MITM') {
-    mitmCount++;
-    countMitm.textContent = mitmCount.toString();
-  }
-
-  const entry = document.createElement('div');
-  entry.className = `log-entry ${payload.severity || 'INFO'}`;
-  entry.innerHTML = `
-    <div class="log-meta">
-      <span>
-        <span class="tag tag-${payload.source}">${payload.source}</span>
-        <strong>${payload.eventType}</strong>
-      </span>
-      <span>${new Date(payload.timestamp).toLocaleTimeString()}</span>
-    </div>
-    <div>${escapeHtml(JSON.stringify(payload.data, null, 2))}</div>
-  `;
-
-  logStream.prepend(entry);
 }
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+// 1. Cập nhật Bảng ARP & Bảng TCP (Khu vực 2 & Khu vực 3)
+function handleStateSnapshot(payload: StateSnapshotPayload) {
+  if (!payload) return;
+
+  // OS Config (syn_cookies)
+  if (payload.os_config) {
+    const isSynCookieOn = payload.os_config.syn_cookies === 1;
+    synCookieBadge.textContent = `SYN COOKIES: ${isSynCookieOn ? 'ON (PROTECTED)' : 'OFF'}`;
+    synCookieBadge.style.background = isSynCookieOn ? '#065f46' : '#374151';
+    synCookieBadge.style.color = isSynCookieOn ? '#34d399' : '#d1d5db';
+  }
+
+  // TCP Summary
+  if (payload.tcp_summary) {
+    countEstablished.textContent = payload.tcp_summary.established_count.toString();
+    countSynRecv.textContent = payload.tcp_summary.syn_recv_count.toString();
+    countTimeWait.textContent = payload.tcp_summary.time_wait_count.toString();
+
+    // Nếu SYN_RECV tăng vọt (> 10) -> báo động quá tải Server
+    if (payload.tcp_summary.syn_recv_count > 10) {
+      nodeServer.classList.add('node-danger-pulse');
+    } else {
+      nodeServer.classList.remove('node-danger-pulse');
+    }
+  }
+
+  // TCP Connections Table
+  if (payload.tcp_connections && Array.isArray(payload.tcp_connections)) {
+    tcpConnectionsBody.innerHTML = payload.tcp_connections
+      .map(
+        (c) => `
+      <tr>
+        <td>${c.local}</td>
+        <td>${c.remote}</td>
+        <td><span style="color: ${c.state === 'ESTABLISHED' ? '#34d399' : c.state === 'SYN_RECV' ? '#ef4444' : '#94a3b8'}; font-weight: bold;">${c.state}</span></td>
+      </tr>
+    `
+      )
+      .join('');
+  }
+
+  // ARP Table
+  if (payload.arp_table && Array.isArray(payload.arp_table)) {
+    let hasSpoof = false;
+    arpTableBody.innerHTML = payload.arp_table
+      .map((entry) => {
+        if (entry.is_spoofed) hasSpoof = true;
+        return `
+          <tr class="${entry.is_spoofed ? 'row-poisoned' : ''}">
+            <td>${entry.ip}</td>
+            <td>${entry.mac}</td>
+            <td>${entry.is_spoofed ? '<span style="color:#ef4444;">⚠️ POISONED (Bị đầu độc)</span>' : '<span style="color:#10b981;">Hợp lệ</span>'}</td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    arpStatusTag.textContent = hasSpoof ? 'POISONED!' : 'CLEAN';
+    arpStatusTag.style.color = hasSpoof ? '#ef4444' : '#10b981';
+  }
 }
 
-// Khởi chạy kết nối
+// 2. Cập nhật Hiệu ứng Sơ đồ Topology (Khu vực 1) & Terminal Log từ Hacker
+function handlePacketEvent(payload: PacketEventPayload) {
+  if (!payload) return;
+
+  if (payload.attack_mode === 'ARP_SPOOF') {
+    attackModeTag.textContent = 'CẢNH BÁO: ĐANG BỊ ARP SPOOFING (ĐƯỜNG TRUYỀN BỊ BẺ CONG)';
+    attackModeTag.style.color = '#f59e0b';
+    lineNormal.style.opacity = '0.15';
+    pathArpSpoof.style.opacity = '1';
+    lineHackerAttack.style.opacity = '0';
+  } else if (payload.attack_mode === 'SYN_FLOOD') {
+    attackModeTag.textContent = 'NGUY HIỂM: ĐANG BỊ TẤN CÔNG TCP SYN FLOOD DỒN DẬP!';
+    attackModeTag.style.color = '#ef4444';
+    lineHackerAttack.style.opacity = '1';
+    nodeServer.classList.add('node-danger-pulse');
+  } else if (payload.attack_mode === 'TCP_RST') {
+    attackModeTag.textContent = 'CẢNH BÁO: BỊ TIÊM GÓI TCP RST (CẮT ĐỨT KẾT NỐI)';
+    attackModeTag.style.color = '#ef4444';
+    lineNormal.style.stroke = '#ef4444';
+    setTimeout(() => {
+      lineNormal.style.stroke = '#10b981';
+    }, 2000);
+  }
+
+  if (payload.terminal_log) {
+    appendLog(payload.terminal_log, 'log-hacker');
+  }
+}
+
+// 3. Cập nhật Sự Kiện Ứng Dụng (Khu vực 4 - Terminal Log)
+function handleAppEvent(payload: AppEventPayload, source: string) {
+  if (!payload) return;
+  const logClass = source === 'CLIENT' ? 'log-client' : 'log-server';
+  if (payload.terminal_log) {
+    appendLog(payload.terminal_log, logClass);
+  }
+}
+
+function appendLog(text: string, className: string) {
+  const line = document.createElement('div');
+  line.className = className;
+  const timeStr = new Date().toLocaleTimeString();
+  line.textContent = `[${timeStr}] ${text}`;
+  terminalLogBox.appendChild(line);
+  terminalLogBox.scrollTop = terminalLogBox.scrollHeight;
+}
+
+btnClearLogs?.addEventListener('click', () => {
+  terminalLogBox.innerHTML = '';
+});
+
+// Khởi chạy WebSocket
 connectWebSocket();

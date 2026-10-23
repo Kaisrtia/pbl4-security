@@ -1,48 +1,46 @@
 import { Request, Response, NextFunction } from 'express';
-import type { TelemetryPayload, HttpRequestTelemetryData } from '@pbl4/shared';
-
-const GOD_VIEW_URL = process.env.GOD_VIEW_URL || 'http://localhost:4000/api/telemetry';
+import { reportToGodView } from '@pbl4/shared';
+import type { ScenarioType, StatusType } from '@pbl4/shared';
 
 export function telemetryMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const startTime = Date.now();
+  // Bỏ qua static files hoặc health check
+  if (req.path.startsWith('/health') || req.path.startsWith('/dist') || req.path === '/' || req.path.endsWith('.html')) {
+    return next();
+  }
 
   res.on('finish', async () => {
-    const durationMs = Date.now() - startTime;
-    const bodyCopy = { ...req.body };
-    const rawBodyStr = JSON.stringify(bodyCopy || {});
+    const rawPayload = req.body && Object.keys(req.body).length > 0 ? req.body : undefined;
+    const bodyStr = JSON.stringify(rawPayload || {});
 
-    // Phát hiện cơ bản dấu hiệu SQL Injection cho Telemetry
-    const isSuspectSql = /('|--|\bOR\b|\bUNION\b|\bSELECT\b)/i.test(rawBodyStr);
+    // Kiểm tra dấu hiệu SQL Injection
+    const isSqlInjection = /('|--|\bOR\b|\bUNION\b|\bSELECT\b)/i.test(bodyStr);
 
-    const telemetryData: HttpRequestTelemetryData = {
-      method: req.method,
-      endpoint: req.originalUrl,
-      clientIp: req.ip || req.socket.remoteAddress,
-      statusCode: res.statusCode,
-      durationMs,
-      requestBody: req.body,
-      isSuspectAttack: isSuspectSql,
-      attackType: isSuspectSql ? 'SQL_INJECTION' : 'NONE',
-      details: isSuspectSql ? 'Phát hiện ký tự nghi ngờ SQL Injection trong Payload' : undefined
-    };
+    let scenario: ScenarioType = 'NORMAL_LOGIN';
+    let status: StatusType = 'INFO';
+    let summary = `Giao tiếp bình thường: ${req.method} ${req.originalUrl}`;
 
-    const payload: TelemetryPayload = {
-      timestamp: new Date().toISOString(),
-      source: 'TARGET_SERVER',
-      eventType: isSuspectSql ? 'SECURITY_ALERT' : 'HTTP_REQUEST',
-      severity: isSuspectSql ? 'WARNING' : 'INFO',
-      data: telemetryData as unknown as Record<string, unknown>
-    };
-
-    try {
-      await fetch(GOD_VIEW_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-    } catch {
-      // Bỏ qua lỗi nếu God-View Server chưa bật
+    if (isSqlInjection) {
+      scenario = 'SQL_INJECTION';
+      status = 'DANGER';
+      summary = `CẢNH BÁO: Phát hiện payload SQL Injection trong yêu cầu tới ${req.originalUrl}`;
     }
+
+    // Lấy câu lệnh SQL thực tế (nếu được route gán vào res.locals.executedSql)
+    const sqlExecution = (res.locals.executedSql as string) || (isSqlInjection ? 'Nối chuỗi SQL không an toàn' : 'Truy vấn thông thường');
+
+    await reportToGodView(
+      'SERVER',
+      'CLIENT_TO_SERVER',
+      status,
+      summary,
+      scenario,
+      {
+        http_method: req.method,
+        endpoint: req.originalUrl,
+        raw_payload: rawPayload,
+        server_internal_execution: sqlExecution
+      }
+    );
   });
 
   next();
