@@ -1,57 +1,58 @@
-import { Router, Request, Response } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { toggleArpSpoof } from '../attacks/mitm.attack.js';
-import { startSynFloodAttack } from '../attacks/dos.attack.js';
+import { startHttpDosAttack, startSynFloodAttack } from '../attacks/dos.attack.js';
 import { runTcpRstInjection } from '../attacks/tcp_rst.attack.js';
 import { runSqlInjectionAttack } from '../attacks/sqli.attack.js';
-
+import { inspectTargetContract } from '../attacks/recon.attack.js';
+import { processes } from '../services/process.service.js';
+import { InputError, ConflictError } from '../config.js';
 export const attackRouter = Router();
+type Handler = (req: Request, res: Response) => Promise<unknown> | unknown;
+const handle = (fn: Handler) => async (req: Request, res: Response) => {
+  try { return res.json(await fn(req, res)); }
+  catch (error) {
+    const status = error instanceof InputError ? 400 : error instanceof ConflictError ? 409 : 500;
+    return res.status(status).json({ error: (error as Error).message, labRestricted: true });
+  }
+};
+// Aliases from the Week 1 handover remain available for the dashboard and CLI.
+attackRouter.post('/recon', handle(req => {
+  const b = req.body ?? {};
+  return inspectTargetContract(b.targetIp);
+}));
 
-/**
- * Kịch bản 1: ARP Spoofing + Sniffing (Lớp 2)
- */
-attackRouter.post('/arp-spoof', async (req: Request, res: Response) => {
-  const { enable = true, clientIp = '172.20.0.10', serverIp = '172.20.0.20' } = req.body;
-  const result = await toggleArpSpoof(Boolean(enable), String(clientIp), String(serverIp));
-  return res.json(result);
-});
+attackRouter.post('/arp-spoof', handle(req => {
+  const b = req.body ?? {};
+  return toggleArpSpoof(b.enable ?? true, b.clientIp, b.serverIp, b.durationSec ?? 60);
+}));
+attackRouter.post('/mitm', handle(req => {
+  const b = req.body ?? {};
+  return toggleArpSpoof(b.enable ?? true, b.clientIp, b.serverIp, b.durationSec ?? 60);
+}));
+attackRouter.post('/syn-flood', handle(req => {
+  const b = req.body ?? {};
+  return startSynFloodAttack(b.targetIp, b.port ?? 8080, b.durationSec ?? 10, b.packetsPerSec ?? 50);
+}));
+attackRouter.post('/dos', handle(req => {
+  const b = req.body ?? {};
+  return startHttpDosAttack(
+    b.targetUrl ?? 'http://172.20.0.20:8080/api/login',
+    b.ratePerSec ?? 50,
+    b.durationSec ?? 10
+  );
+}));
+attackRouter.post('/tcp-rst', handle(req => {
+  const b = req.body ?? {};
+  return runTcpRstInjection(b.clientIp, b.targetIp, b.port ?? 8080, b.durationSec ?? 10);
+}));
+attackRouter.post('/sqli', handle(req => {
+  const b = req.body ?? {};
+  return runSqlInjectionAttack(b.targetUrl ?? 'http://172.20.0.20:8080/api/login',
+    b.payload ?? "' OR '1'='1' --");
+}));
+attackRouter.get('/status', (_req, res) => res.json({ labRestricted: true, running: processes.snapshot() }));
 
-// Giữ alias /attack/mitm để tương thích
-attackRouter.post('/mitm', async (req: Request, res: Response) => {
-  const { enable = true, clientIp = '172.20.0.10', serverIp = '172.20.0.20' } = req.body;
-  const result = await toggleArpSpoof(Boolean(enable), String(clientIp), String(serverIp));
-  return res.json(result);
-});
-
-/**
- * Kịch bản 2: TCP SYN Flood (Lớp 4)
- */
-attackRouter.post('/syn-flood', async (req: Request, res: Response) => {
-  const { targetIp = '172.20.0.20', port = 8080, durationSec = 10 } = req.body;
-  const result = await startSynFloodAttack(String(targetIp), Number(port), Number(durationSec));
-  return res.json(result);
-});
-
-// Giữ alias /attack/dos để tương thích
-attackRouter.post('/dos', async (req: Request, res: Response) => {
-  const { targetIp = '172.20.0.20', port = 8080, durationSec = 10 } = req.body;
-  const result = await startSynFloodAttack(String(targetIp), Number(port), Number(durationSec));
-  return res.json(result);
-});
-
-/**
- * Kịch bản 3: TCP RST Injection (Lớp 4)
- */
-attackRouter.post('/tcp-rst', async (req: Request, res: Response) => {
-  const { clientIp = '172.20.0.10', targetIp = '172.20.0.20', port = 8080 } = req.body;
-  const result = await runTcpRstInjection(String(clientIp), String(targetIp), Number(port));
-  return res.json(result);
-});
-
-/**
- * Kịch bản mở rộng: SQL Injection
- */
-attackRouter.post('/sqli', async (req: Request, res: Response) => {
-  const { targetUrl = 'http://172.20.0.20:8080/api/login', payload = "' OR '1'='1" } = req.body;
-  const result = await runSqlInjectionAttack(String(targetUrl), String(payload));
-  return res.json(result);
+attackRouter.post('/stop', (_req, res) => {
+  processes.stopAll();
+  return res.json({ status: 'stopped', labRestricted: true });
 });

@@ -1,5 +1,6 @@
 FROM node:20-alpine
 WORKDIR /app
+RUN apk add --no-cache python3 scapy libpcap
 COPY package*.json ./
 COPY tsconfig.base.json ./
 COPY shared/ ./shared/

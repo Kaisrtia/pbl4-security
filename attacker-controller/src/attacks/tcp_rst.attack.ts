@@ -1,26 +1,22 @@
-import { sendHackerPacketEvent } from '../services/telemetry.service.js';
+import { LAB, ConflictError, exact, integer, labPort } from '../config.js';
+import { processes } from '../services/process.service.js';
+import { createLabWorker } from '../services/worker.service.js';
 
 export async function runTcpRstInjection(
-  clientIp: string = '172.20.0.10',
-  targetIp: string = '172.20.0.20',
-  port: number = 8080
+  clientIp: unknown = LAB.client,
+  targetIp: unknown = LAB.server,
+  port: unknown = 8080,
+  durationSec: unknown = 10
 ) {
-  console.log(`[TCP RST Attack] Bơm gói tin TCP RST giả mạo vào luồng kết nối giữa ${clientIp} và ${targetIp}:${port}`);
+  exact(clientIp, LAB.client, 'clientIp');
+  exact(targetIp, LAB.server, 'targetIp');
+  const targetPort = labPort(port);
+  const duration = integer(durationSec, 1, 30, 'durationSec');
+  if (!processes.isRunning('ARP_SPOOF')) {
+    throw new ConflictError('Start ARP Spoofing first so hacker_node can observe the TCP stream');
+  }
 
-  const terminalLog = `[TCP-RST] Injected forged RST packet into connection ${clientIp} <-> ${targetIp}:${port} (seq=19482731)`;
-
-  await sendHackerPacketEvent('TCP_RST', 'INJECTED', terminalLog, {
-    protocol: 'TCP',
-    src: `${clientIp}:54322`,
-    dst: `${targetIp}:${port}`,
-    flags: 'R',
-    seq_num: 19482731,
-    extracted_data: 'TCP connection forcefully terminated by injected RST packet'
+  return processes.start('TCP_RST', duration, {
+    commands: [createLabWorker('rst', targetPort)]
   });
-
-  return {
-    status: 'injected',
-    mode: 'TCP_RST',
-    message: `Injected forged TCP RST packet into ${clientIp} <-> ${targetIp}:${port}`
-  };
 }

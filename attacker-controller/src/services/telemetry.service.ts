@@ -1,42 +1,91 @@
-import {
-  sendTelemetryEnvelope,
-  TelemetryEnvelope,
-  PacketEventPayload,
+import type {
+  AttackAction,
   AttackMode,
-  AttackAction
+  PacketInfo,
+  Severity,
+  TelemetryEnvelope
 } from '@pbl4/shared';
+import { LAB } from '../config.js';
 
-const HACKER_IP = process.env.HACKER_IP || '172.20.0.66';
-const GOD_VIEW_URL = process.env.GOD_VIEW_URL || 'http://172.20.0.99:4000/api/telemetry';
+export type Mode = AttackMode | 'SQL_INJECTION' | 'DOS_FLOOD' | 'RECON';
+type Payload = Record<string, unknown>;
 
-export async function sendHackerPacketEvent(
-  attackMode: AttackMode,
-  action: AttackAction,
-  terminalLog: string,
-  packetInfo: {
-    protocol: 'HTTP' | 'TCP' | 'ARP' | string;
-    src: string;
-    dst: string;
-    flags?: 'PA' | 'S' | 'R' | string;
-    seq_num?: number;
-    extracted_data?: string;
-  }
-): Promise<void> {
-  const payload: PacketEventPayload = {
-    attack_mode: attackMode,
-    action,
-    packet_info: packetInfo,
-    terminal_log: terminalLog
-  };
+// God-View may be started after the controller, so telemetry delivery is isolated
+// from attack lifecycle management and uses a small bounded queue.
+const queue: TelemetryEnvelope<Payload>[] = [];
+let draining = false;
+let lastWarning = 0;
 
-  const envelope: TelemetryEnvelope<PacketEventPayload> = {
+export function report(event: 'PACKET_EVENT' | 'ATTACK_STATUS', payload: Payload,
+  severity: Severity = 'NORMAL'): void {
+  const envelope: TelemetryEnvelope<Payload> = {
     timestamp: Date.now(),
     source_node: 'HACKER',
-    source_ip: HACKER_IP,
-    event_type: 'PACKET_EVENT',
-    severity: 'DANGER',
+    source_ip: LAB.hacker,
+    event_type: event,
+    severity,
     payload
   };
 
-  await sendTelemetryEnvelope(envelope, GOD_VIEW_URL);
+  console.log(JSON.stringify(envelope));
+  if (queue.length >= 100) queue.shift();
+  queue.push(envelope);
+  void drain();
+}
+
+async function drain(): Promise<void> {
+  if (draining) return;
+  draining = true;
+  try {
+    while (queue.length) {
+      const envelope = queue.shift();
+      try {
+        const response = await fetch(LAB.telemetry, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(envelope),
+          signal: AbortSignal.timeout(1500)
+        });
+        await response.body?.cancel();
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      } catch (error) {
+        if (Date.now() - lastWarning > 10000) {
+          console.error(`[telemetry] Delivery failed: ${(error as Error).message}`);
+          lastWarning = Date.now();
+        }
+      }
+    }
+  } finally { draining = false; }
+}
+
+export function status(
+  mode: Mode,
+  state: string,
+  log: string,
+  details: Payload = {},
+  severityOverride?: Severity
+): void {
+  const severity: Severity = severityOverride ?? (state === 'FAILED'
+    ? 'WARNING'
+    : state === 'RUNNING' ? 'DANGER' : 'NORMAL');
+  report('ATTACK_STATUS', {
+    attack_mode: mode,
+    status: state,
+    terminal_log: log,
+    ...details
+  }, severity);
+}
+
+export function packet(
+  mode: AttackMode,
+  action: AttackAction,
+  info: PacketInfo,
+  terminalLog?: string
+): void {
+  report('PACKET_EVENT', {
+    attack_mode: mode,
+    action,
+    packet_info: info,
+    terminal_log: terminalLog ?? `[${mode}] ${action}: ${info.src} -> ${info.dst}`
+  }, 'DANGER');
 }
