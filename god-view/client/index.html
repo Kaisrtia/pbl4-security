@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>God-View SIEM & Attack Monitor (Port 4000)</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #131b2e;
+      --border: #1e293b;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --accent-blue: #38bdf8;
+      --accent-red: #f43f5e;
+      --accent-green: #10b981;
+      --accent-yellow: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 20px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 15px;
+      margin-bottom: 20px;
+    }
+    .header-title h1 {
+      margin: 0;
+      font-size: 22px;
+      color: var(--accent-blue);
+      letter-spacing: 0.5px;
+    }
+    .header-title p {
+      margin: 4px 0 0;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      background: #022c22;
+      color: var(--accent-green);
+      border: 1px solid #065f46;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .grid-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 25px;
+    }
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .stat-card .label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; }
+    .stat-card .val { font-size: 26px; font-weight: bold; margin-top: 8px; }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 900px) {
+      .main-grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+    }
+    .card-title {
+      margin-top: 0;
+      font-size: 16px;
+      color: var(--accent-blue);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+      margin-bottom: 15px;
+    }
+    .log-stream {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 520px;
+      overflow-y: auto;
+    }
+    .log-entry {
+      background: #0b1120;
+      border-left: 4px solid var(--border);
+      border-radius: 4px;
+      padding: 10px 14px;
+      font-family: monospace;
+      font-size: 13px;
+    }
+    .log-entry.INFO { border-color: var(--accent-blue); }
+    .log-entry.WARNING { border-color: var(--accent-yellow); }
+    .log-entry.CRITICAL { border-color: var(--accent-red); background: rgba(244, 63, 94, 0.08); }
+    .log-meta {
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-muted);
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+    .tag {
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    .tag-TARGET_SERVER { background: #1e3a8a; color: #93c5fd; }
+    .tag-ATTACKER_CONTROLLER { background: #831843; color: #fbcfe8; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-title">
+      <h1>God-View Realtime Telemetry Monitor (Port 4000)</h1>
+      <p>Trạm Quan Sát Thượng Đế - Giám sát luồng thông tin mạng giữa Target và Attacker</p>
+    </div>
+    <div id="wsStatus" class="status-badge">
+      <span class="status-dot"></span>
+      <span id="wsStatusText">WebSocket: Đang kết nối...</span>
+    </div>
+  </header>
+
+  <section class="grid-stats">
+    <div class="stat-card">
+      <div class="label">Tổng Bản Tin Telemetry</div>
+      <div class="val" id="countTotal" style="color: var(--accent-blue);">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Cảnh Báo SQL Injection</div>
+      <div class="val" id="countSqli" style="color: var(--accent-yellow);">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Lưu Lượng DoS Phát Hiện</div>
+      <div class="val" id="countDos" style="color: var(--accent-red);">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Nghe Lén MITM Phát Hiện</div>
+      <div class="val" id="countMitm" style="color: #a855f7;">0</div>
+    </div>
+  </section>
+
+  <div class="main-grid">
+    <div class="card">
+      <h3 class="card-title">Luồng Bản Tin Thời Gian Thực (Live Telemetry Stream)</h3>
+      <div id="logStream" class="log-stream">
+        <div style="color: #64748b; text-align: center; padding: 20px;">Đang lắng nghe bản tin từ Target Server và Attacker Controller...</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 class="card-title">Trạng Thái Các Phân Hệ</h3>
+      <div style="font-size: 14px; line-height: 1.8;">
+        <p><strong>🎯 Target App (TV1):</strong> <code>http://localhost:3000</code></p>
+        <p><strong>⚔️ Attacker Controller (TV2):</strong> <code>http://localhost:5000</code></p>
+        <p><strong>👁️ God-View Hub (TV3):</strong> <code>http://localhost:4000</code></p>
+        <hr style="border: 0; border-top: 1px solid var(--border); margin: 15px 0;">
+        <p style="font-size: 13px; color: var(--text-muted);">
+          Giao thức kết nối: <br>
+          - Telemetry Ingest: <code>POST /api/telemetry</code><br>
+          - WebSockets Stream: <code>ws://localhost:4000</code>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script src="/dist/main.js"></script>
+</body>
+</html>

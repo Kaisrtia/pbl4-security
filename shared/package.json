@@ -1,0 +1,15 @@
+{
+  "name": "@pbl4/shared",
+  "version": "1.0.0",
+  "description": "Shared TypeScript types and schemas for PBL4 simulation",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
