@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  target-server:
+    build:
+      context: .
+      dockerfile: target-app/server/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - GOD_VIEW_URL=http://god-view:4000/api/telemetry
+    restart: unless-stopped
+
+  god-view:
+    build:
+      context: .
+      dockerfile: god-view/server/Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+    restart: unless-stopped
+
+  attacker-controller:
+    build:
+      context: .
+      dockerfile: attacker-controller/Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - GOD_VIEW_URL=http://god-view:4000/api/telemetry
+    depends_on:
+      - target-server
+      - god-view
+    restart: unless-stopped

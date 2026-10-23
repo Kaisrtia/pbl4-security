@@ -1,0 +1,11 @@
+{
+  "name": "@pbl4/godview-client",
+  "version": "1.0.0",
+  "description": "God-View Realtime Monitoring Web Dashboard",
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

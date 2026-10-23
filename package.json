@@ -1,0 +1,33 @@
+{
+  "name": "pbl4-cyber-simulation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PBL4 - He thong mo phong va giam sat tan cong mang",
+  "workspaces": [
+    "shared",
+    "target-app/server",
+    "target-app/client",
+    "attacker-controller",
+    "god-view/server",
+    "god-view/client"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "start:target": "npm run start --workspace=target-app/server",
+    "start:attacker": "npm run start --workspace=attacker-controller",
+    "start:godview": "npm run start --workspace=god-view/server",
+    "dev:target": "npm run dev --workspace=target-app/server",
+    "dev:attacker": "npm run dev --workspace=attacker-controller",
+    "dev:godview": "npm run dev --workspace=god-view/server"
+  },
+  "keywords": [
+    "cybersecurity",
+    "sqli",
+    "dos",
+    "mitm",
+    "telemetry",
+    "typescript"
+  ],
+  "author": "",
+  "license": "ISC"
+}
