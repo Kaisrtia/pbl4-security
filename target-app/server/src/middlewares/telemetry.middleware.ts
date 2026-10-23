@@ -1,6 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
-import { reportToGodView } from '@pbl4/shared';
-import type { ScenarioType, StatusType } from '@pbl4/shared';
+import { sendTelemetryEnvelope } from '@pbl4/shared';
+import type {
+  AppAction,
+  AppEventPayload,
+  Severity,
+  TelemetryEnvelope
+} from '@pbl4/shared';
+
+const GOD_VIEW_URL = process.env.GOD_VIEW_URL || 'http://172.20.0.99:4000/api/telemetry';
+const SERVER_IP = process.env.SERVER_IP || '172.20.0.20';
 
 export function telemetryMiddleware(req: Request, res: Response, next: NextFunction): void {
   // Bỏ qua static files hoặc health check
@@ -8,39 +16,36 @@ export function telemetryMiddleware(req: Request, res: Response, next: NextFunct
     return next();
   }
 
-  res.on('finish', async () => {
+  res.on('finish', () => {
     const rawPayload = req.body && Object.keys(req.body).length > 0 ? req.body : undefined;
     const bodyStr = JSON.stringify(rawPayload || {});
 
     // Kiểm tra dấu hiệu SQL Injection
     const isSqlInjection = /('|--|\bOR\b|\bUNION\b|\bSELECT\b)/i.test(bodyStr);
 
-    let scenario: ScenarioType = 'NORMAL_LOGIN';
-    let status: StatusType = 'INFO';
-    let summary = `Giao tiếp bình thường: ${req.method} ${req.originalUrl}`;
+    const action: AppAction = req.path === '/resources' ? 'RESOURCE_FETCH' : 'LOGIN_ATTEMPT';
+    const severity: Severity = isSqlInjection ? 'DANGER' : 'NORMAL';
+    const terminalLog = isSqlInjection
+      ? `[SERVER] CẢNH BÁO SQL Injection tại ${req.method} ${req.originalUrl} (HTTP ${res.statusCode})`
+      : `[SERVER] ${req.method} ${req.originalUrl} hoàn tất (HTTP ${res.statusCode})`;
 
-    if (isSqlInjection) {
-      scenario = 'SQL_INJECTION';
-      status = 'DANGER';
-      summary = `CẢNH BÁO: Phát hiện payload SQL Injection trong yêu cầu tới ${req.originalUrl}`;
-    }
+    const payload: AppEventPayload = {
+      action,
+      target_ip: SERVER_IP,
+      http_status: res.statusCode,
+      terminal_log: terminalLog
+    };
 
-    // Lấy câu lệnh SQL thực tế (nếu được route gán vào res.locals.executedSql)
-    const sqlExecution = (res.locals.executedSql as string) || (isSqlInjection ? 'Nối chuỗi SQL không an toàn' : 'Truy vấn thông thường');
+    const envelope: TelemetryEnvelope<AppEventPayload> = {
+      timestamp: Date.now(),
+      source_node: 'SERVER',
+      source_ip: SERVER_IP,
+      event_type: 'APP_EVENT',
+      severity,
+      payload
+    };
 
-    await reportToGodView(
-      'SERVER',
-      'CLIENT_TO_SERVER',
-      status,
-      summary,
-      scenario,
-      {
-        http_method: req.method,
-        endpoint: req.originalUrl,
-        raw_payload: rawPayload,
-        server_internal_execution: sqlExecution
-      }
-    );
+    void sendTelemetryEnvelope(envelope, GOD_VIEW_URL);
   });
 
   next();

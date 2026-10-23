@@ -2,7 +2,8 @@ import Database from 'better-sqlite3';
 import path from 'path';
 
 const dbPath = path.resolve(process.cwd(), 'target_database.sqlite');
-export const db = new Database(dbPath);
+// Khai báo kiểu tường minh để TypeScript có thể phát sinh file declaration.
+export const db: Database.Database = new Database(dbPath);
 
 export function initDatabase(): void {
   // Bảng Users theo yêu cầu Chặng 1
