@@ -28,6 +28,14 @@ const tcpConnectionsBody = document.getElementById('tcpConnectionsBody') as HTML
 const terminalLogBox = document.getElementById('terminalLogBox') as HTMLDivElement;
 const btnClearLogs = document.getElementById('btnClearLogs') as HTMLButtonElement;
 
+// Giữ một khóa nhỏ cho các event đã hiển thị để có thể vừa tải history vừa
+// nhận WebSocket mà không nhân đôi cùng một bản tin trên giao diện.
+const renderedTelemetry = new Set<string>();
+
+function telemetryKey(envelope: TelemetryEnvelope): string {
+  return `${envelope.timestamp ?? 'no-time'}|${envelope.source_node ?? 'unknown'}|${envelope.event_type}|${JSON.stringify(envelope.payload ?? {})}`;
+}
+
 // WebSocket connection
 function connectWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -62,6 +70,14 @@ function connectWebSocket() {
 function handleTelemetry(envelope: TelemetryEnvelope) {
   if (!envelope || !envelope.event_type) return;
 
+  const key = telemetryKey(envelope);
+  if (renderedTelemetry.has(key)) return;
+  renderedTelemetry.add(key);
+  if (renderedTelemetry.size > 2000) {
+    const oldest = renderedTelemetry.values().next().value;
+    if (oldest) renderedTelemetry.delete(oldest);
+  }
+
   switch (envelope.event_type) {
     case 'STATE_SNAPSHOT':
       handleStateSnapshot(envelope.payload as StateSnapshotPayload);
@@ -73,6 +89,17 @@ function handleTelemetry(envelope: TelemetryEnvelope) {
     case 'APP_EVENT':
       handleAppEvent(envelope.payload as AppEventPayload, envelope.source_node);
       break;
+  }
+}
+
+async function loadTelemetryHistory(): Promise<void> {
+  try {
+    const response = await fetch('/api/telemetry/history', { cache: 'no-store' });
+    if (!response.ok) return;
+    const history = await response.json() as { logs?: TelemetryEnvelope[] };
+    for (const envelope of history.logs ?? []) handleTelemetry(envelope);
+  } catch {
+    // WebSocket live updates vẫn hoạt động nếu history chưa sẵn sàng.
   }
 }
 
@@ -191,3 +218,4 @@ btnClearLogs?.addEventListener('click', () => {
 
 // Khởi chạy WebSocket
 connectWebSocket();
+void loadTelemetryHistory();

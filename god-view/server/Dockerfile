@@ -8,6 +8,7 @@ COPY god-view/client/ ./god-view/client/
 
 RUN npm install
 RUN npm run build --workspace=shared
+RUN npm run build --workspace=god-view/client
 RUN npm run build --workspace=god-view/server
 
 EXPOSE 4000
