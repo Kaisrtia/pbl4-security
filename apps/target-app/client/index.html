@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Target App - Cổng Thông Tin Mật (Port 3000)</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+    }
+    .card {
+      background: #1e293b;
+      padding: 30px;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 480px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      border: 1px solid #334155;
+    }
+    h2 { margin-top: 0; color: #38bdf8; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 6px; font-size: 14px; color: #94a3b8; }
+    input {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 6px;
+      border: 1px solid #475569;
+      background: #0f172a;
+      color: #fff;
+      box-sizing: border-box;
+      font-size: 14px;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #0284c7;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button:hover { background: #0369a1; }
+    .status-box {
+      margin-top: 15px;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      display: none;
+    }
+    .status-success { background: #064e3b; color: #34d399; border: 1px solid #059669; }
+    .status-error { background: #7f1d1d; color: #f87171; border: 1px solid #b91c1c; }
+    .resources-view { margin-top: 20px; }
+    .resource-item {
+      background: #0f172a;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      border-left: 4px solid #38bdf8;
+    }
+    .resource-item h4 { margin: 0 0 5px 0; color: #e2e8f0; }
+    .resource-item p { margin: 0; color: #94a3b8; font-family: monospace; font-size: 13px; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      background: #ef4444;
+      color: #fff;
+      margin-left: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>Target Portal (Port 3000)</h2>
+    <p style="color: #64748b; font-size: 13px;">Hệ thống xác thực và quản lý tài nguyên mật (Mục tiêu giả định cho PBL4)</p>
+
+    <!-- Form Đăng nhập -->
+    <div id="loginSection">
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="username">Tên người dùng (Username)</label>
+          <input type="text" id="username" placeholder="Nhập username (e.g. admin)" required>
+        </div>
+        <div class="form-group">
+          <label for="password">Mật khẩu (Password)</label>
+          <input type="password" id="password" placeholder="Nhập password" required>
+        </div>
+        <button type="submit" id="btnLogin">Đăng Nhập</button>
+      </form>
+    </div>
+
+    <!-- Hộp thông báo trạng thái -->
+    <div id="statusBox" class="status-box"></div>
+
+    <!-- Khu vực hiển thị Tài nguyên Mật sau khi đăng nhập thành công -->
+    <div id="resourceSection" style="display: none;" class="resources-view">
+      <h3>Tài Nguyên Mật (Protected Resources)</h3>
+      <div id="resourceList"></div>
+      <button id="btnLogout" style="background: #475569; margin-top: 15px;">Đăng Xuất</button>
+    </div>
+  </div>
+
+  <script src="/dist/main.js"></script>
+</body>
+</html>
