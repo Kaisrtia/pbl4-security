@@ -13,12 +13,12 @@ app.get('/health', (_req, res) => res.json({
   service: 'Attacker Controller',
   port: PORT,
   labRestricted: true,
-  allowedTargets: [LAB.client, LAB.server],
-  scenarios: ['RECON', 'ARP_SPOOF', 'SYN_FLOOD', 'DOS_FLOOD', 'TCP_RST', 'SQL_INJECTION']
+  allowedTargets: [LAB.server],
+  scenarios: ['SYN_FLOOD']
 }));
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`[Attacker Controller] Lab API at http://${LAB.hacker}:${PORT}`);
-  console.log(`[Attacker Controller] Restricted targets: ${LAB.client}, ${LAB.server}`);
+  console.log(`[Attacker Controller] Restricted target: ${LAB.server}`);
 });
 function shutdown() {
   processes.stopAll();

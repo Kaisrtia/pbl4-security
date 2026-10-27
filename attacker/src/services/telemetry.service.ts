@@ -1,13 +1,7 @@
-import type {
-  AttackAction,
-  AttackMode,
-  PacketInfo,
-  Severity,
-  TelemetryEnvelope
-} from '@pbl4/shared';
+import type { Severity, TelemetryEnvelope } from '@pbl4/shared';
 import { LAB } from '../config.js';
 
-export type Mode = AttackMode | 'SQL_INJECTION' | 'DOS_FLOOD' | 'RECON';
+export type Mode = 'SYN_FLOOD';
 type Payload = Record<string, unknown>;
 
 // God-View may be started after the controller, so telemetry delivery is isolated
@@ -74,18 +68,4 @@ export function status(
     terminal_log: log,
     ...details
   }, severity);
-}
-
-export function packet(
-  mode: AttackMode,
-  action: AttackAction,
-  info: PacketInfo,
-  terminalLog?: string
-): void {
-  report('PACKET_EVENT', {
-    attack_mode: mode,
-    action,
-    packet_info: info,
-    terminal_log: terminalLog ?? `[${mode}] ${action}: ${info.src} -> ${info.dst}`
-  }, 'DANGER');
 }

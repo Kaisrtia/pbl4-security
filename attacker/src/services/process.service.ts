@@ -9,16 +9,8 @@ export interface CommandSpec {
   onLine?: (line: string) => void;
 }
 
-export interface ScenarioTick {
-  tick: number;
-  elapsedSec: number;
-  remainingSec: number;
-}
-
 export interface ScenarioOptions {
   commands?: CommandSpec[];
-  onTick?: (context: ScenarioTick) => void;
-  onStop?: () => void;
 }
 
 interface Scenario {
@@ -26,19 +18,12 @@ interface Scenario {
   state: 'RUNNING' | 'STOPPING';
   durationSec: number;
   startedAt: number;
-  tick: number;
   timer: NodeJS.Timeout;
-  interval?: NodeJS.Timeout;
   children: ChildProcess[];
-  onStop?: () => void;
 }
 
 export class ProcessManager {
   private jobs = new Map<Mode, Scenario>();
-
-  isRunning(mode: Mode) {
-    return this.jobs.get(mode)?.state === 'RUNNING';
-  }
 
   start(mode: Mode, durationSec: number, options: ScenarioOptions = {}) {
     if (this.jobs.has(mode)) {
@@ -50,28 +35,11 @@ export class ProcessManager {
       state: 'RUNNING',
       durationSec,
       startedAt: Date.now(),
-      tick: 0,
-      children: [],
-      onStop: options.onStop
+      children: []
     } as unknown as Scenario;
 
     this.jobs.set(mode, job);
     job.timer = setTimeout(() => this.stop(mode, 'duration_elapsed'), durationSec * 1000 + 50);
-
-    if (options.onTick) {
-      job.interval = setInterval(() => {
-        job.tick += 1;
-        try {
-          options.onTick?.({
-            tick: job.tick,
-            elapsedSec: job.tick,
-            remainingSec: Math.max(0, durationSec - job.tick)
-          });
-        } catch (error) {
-          this.fail(mode, (error as Error).message);
-        }
-      }, 1000);
-    }
 
     try {
       for (const command of options.commands ?? []) {
@@ -138,8 +106,6 @@ export class ProcessManager {
 
     job.state = 'STOPPING';
     clearTimeout(job.timer);
-    if (job.interval) clearInterval(job.interval);
-    job.onStop?.();
 
     for (const child of job.children) {
       if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
