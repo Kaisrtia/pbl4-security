@@ -1,59 +1,97 @@
-# PBL4 - Hệ Thống Mô Phỏng & Giám Sát Tấn Công Mạng (Cyber Attack Simulation & Monitoring System)
+# PBL4 — Phòng thủ đa lớp và trực quan hóa sự kiện thời gian thực
 
-**Mã hạng mục:** T1-ALL (Milestone 1 - Tuần 1)  
-**Nhóm sinh viên thực hiện:**
-- **Trung (T1-TV1):** Phụ trách `client_node` (172.20.0.10) & `target_server` (172.20.0.20)
-- **Trí (T1-TV2):** Phụ trách `hacker_node` (172.20.0.66)
-- **Nguyên (T1-TV3):** Phụ trách `god_view` (172.20.0.99)
+**Nghiên cứu và triển khai mô hình phòng thủ đa lớp kết hợp trực quan hóa
+sự kiện thời gian thực cho kiến trúc Client–Server.**
 
----
+Mô hình đích sử dụng hai máy trong cùng LAN:
 
-## 📌 1. Kiến Trúc Mạng Docker (4 Containers - `cyber_net: 172.20.0.0/24`)
+- Máy server chạy ứng dụng mục tiêu, các cơ chế phòng thủ ở phạm vi mạng,
+  hệ điều hành và ứng dụng, cùng God-View để quan sát sự kiện.
+- Máy thực nghiệm chạy các kịch bản tấn công và client kiểm tra khả năng
+  phục vụ người dùng hợp lệ. Địa chỉ IP sẽ được cấu hình theo môi trường demo.
 
-| Tên Container | Vai trò | IP tĩnh | Port nội bộ | Port Host | Phụ trách chính |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **`client_node`** | Giả lập người dùng (Gửi HTTP Login & giữ TCP) | `172.20.0.10` | 3000 | 3000 | Trung (T1-TV1) |
-| **`target_server`** | App Server + Database (SQLite) + OS Agent đọc bảng mạng | `172.20.0.20` | 8080 (HTTP)<br>9000 (TCP) | 8080 | Trung (T1-TV1) |
-| **`hacker_node`** | Máy tấn công (Chứa script ARP, SYN Flood, TCP RST) | `172.20.0.66` | 5000 (Control API) | *Không mở* | Trí (T1-TV2) |
-| **`god_view`** | WebSocket Server thu thập log & Giao diện Thượng đế | `172.20.0.99` | 4000 (WS/API)<br>5173 (Web UI) | 4000<br>5173 | Nguyên (T1-TV3) |
+Mục tiêu là so sánh hoạt động trước/sau khi bật từng lớp phòng thủ và khi
+kết hợp các lớp, dựa trên sự kiện và số liệu quan sát được.
 
----
+## Trạng thái hiện tại
 
-## ⚔️ 2. Ba Kịch Bản Tấn Công Chính (L2 & L4)
-1. **Kịch bản 1: ARP Spoofing + Sniffing (Lớp 2 - Data Link)**
-   - Lệnh: `arpspoof -i eth0 -t 172.20.0.10 -r 172.20.0.20`
-   - Bảng ARP bị ghi đè, bẻ cong gói tin đăng nhập đi qua Hacker, Scapy giải mã mật khẩu.
-2. **Kịch bản 2: TCP SYN Flood bằng `hping3` (Lớp 4 - Transport)**
-   - Lệnh: `hping3 -S -p 8080 --rand-source --interval u1000 172.20.0.20`
-   - Gây nghẽn hàng đợi `SYN_RECV`, Client bị Timeout. Phòng thủ bằng `sysctl -w net.ipv4.tcp_syncookies=1`.
-3. **Kịch bản 3: TCP RST Injection bằng `tcpkill` / Scapy (Lớp 4 - Cắt đứt kết nối)**
-   - Lệnh: `tcpkill -i eth0 host 172.20.0.10 and port 8080`
-   - Bơm gói TCP RST giả mạo, ngắt kết nối `ESTABLISHED` ngay lập tức.
-*(Kịch bản mở rộng: Tấn công Web SQL Injection `' OR 1=1 --`).*
+Repository đã được tổ chức lại cho định hướng mới. Runtime hiện tại vẫn là
+prototype của lab Docker một máy: IP còn cố định, OS Agent còn dùng số liệu
+mô phỏng và API SYN Cookies chưa thay đổi cấu hình kernel. **Chưa có bản triển
+khai LAN hai máy hoặc host-agent thực tế.**
 
----
+ARP MITM và TCP RST vẫn còn trong mã của lab cũ, nhưng không thuộc phạm vi bắt
+buộc của mô hình mới. Việc chuyển thư mục không thay đổi hành vi các kịch bản.
 
-## 👁️ 3. Giao Diện God-View Dashboard (4 Khu Vực Trực Quan)
-1. **Khu vực 1 (Giữa màn hình):** Sơ đồ Topology Mạng (3 node: Client ↔ Server và Hacker; vẽ hiệu ứng hạt dữ liệu bay & đổi màu theo trạng thái tấn công).
-2. **Khu vực 2 (Góc trái dưới):** Bảng ARP Cache (tự động báo đỏ `POISONED!` khi bị ARP Spoofing).
-3. **Khu vực 3 (Góc phải trên):** Bảng trạng thái TCP & OS Config (thanh `syn_cookies: OFF/ON`, bộ đếm `SYN_RECV`, danh sách `ESTABLISHED`).
-4. **Khu vực 4 (Góc dưới cùng):** Live Terminal Log (nối chuỗi `terminal_log` từ cả 3 node theo thời gian: Xanh dương = Client, Xanh lá = Server, Đỏ = Hacker).
+## Cấu trúc repository
 
----
-
-## 📡 4. Chuẩn Hóa Bản Tin Telemetry JSON (Chặng 0)
-- **Endpoint nhận sự kiện:** `POST http://172.20.0.99:4000/api/telemetry`
-- **Kênh WebSocket đẩy lên UI:** `ws://localhost:4000` (event: `"GOD_VIEW_UPDATE"`)
-- **Chi tiết Envelope & Payloads:** Xem tại [`docs/telemetry-spec.md`](./docs/telemetry-spec.md).
-
----
-
-## 🚀 5. Khởi Chạy Hệ Thống
-
-```bash
-# Khởi chạy toàn bộ 4 containers trong mạng cyber_net
-docker compose up -d
-
-# Xem log God-View
-docker logs -f god_view
+```text
+apps/
+  target-app/       Ứng dụng mục tiêu: server và giao diện người dùng
+  god-view/         API telemetry, WebSocket và dashboard
+attacker/          Bộ điều khiển và worker thực nghiệm
+agents/
+  host-agent/      Đặc tả trách nhiệm agent mạng/hệ điều hành (chưa triển khai)
+packages/
+  shared/          Kiểu dữ liệu và helper dùng chung
+deploy/
+  server/          Dockerfile của ứng dụng và God-View
+  attacker/        Dockerfile của bộ điều khiển
+  local/           Compose và client của lab Docker cũ
+experiments/       Quy ước kịch bản và kết quả thực nghiệm
+docs/              Kiến trúc mới, hướng dẫn chuyển cấu trúc và tài liệu
+  legacy/          Báo cáo và thiết kế mô hình cũ để tham khảo
 ```
+
+Các package được quản lý bằng npm workspaces. `packages/shared` được build
+trước các workspace sử dụng nó. Tên package `@pbl4/*` được giữ ổn định để
+không phải thay các import chỉ vì di chuyển thư mục.
+
+## Phát triển trên máy cá nhân
+
+Giữ Node.js 20 như runtime Docker hiện tại; phiên bản nằm trong `.nvmrc`.
+Nếu dùng nvm, chạy `nvm use` trước khi cài dependencies.
+
+```sh
+npm ci
+npm run build
+```
+
+Mở các terminal riêng từ thư mục gốc:
+
+```sh
+npm run dev:godview
+npm run dev:target
+npm run dev:attacker
+```
+
+- God-View: `http://localhost:4000`
+- Target App và API: `http://localhost:8080`
+- Attacker API khi chạy trực tiếp: `http://localhost:5000`
+- Menu điều khiển: `npm run attack:cli`
+
+Build trước khi mở giao diện vì server phục vụ JavaScript trong thư mục
+`dist` của client. `npm run dev:*` chỉ theo dõi mã server/controller.
+Các lệnh trên phục vụ phát triển; tấn công packet-level vẫn phụ thuộc lab
+Docker cũ. Để Target Server gửi telemetry khi chạy trực tiếp, đặt
+`GOD_VIEW_URL=http://localhost:4000/api/telemetry` trong môi trường của nó.
+
+## Lab Docker hiện có
+
+```sh
+npm run lab:up
+npm run lab:logs
+npm run lab:down
+```
+
+Các lệnh dùng [`deploy/local/compose.yaml`](deploy/local/compose.yaml).
+Lab này vẫn có bốn container và dải IP cũ; đây là cấu hình tương thích để
+tiếp tục phát triển, không phải cấu hình LAN hai máy cuối cùng.
+
+## Tài liệu
+
+- [Kiến trúc và phạm vi mới](docs/system-architecture.md)
+- [Hướng dẫn sau khi chuyển thư mục](docs/migration.md)
+- [Hợp đồng telemetry hiện tại](docs/telemetry-spec.md)
+- [Quy ước thực nghiệm](experiments/README.md)
+- [Tài liệu mô hình cũ](docs/legacy/README.md)

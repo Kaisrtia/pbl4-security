@@ -1,78 +1,76 @@
-# Tài Liệu Thiết Kế Kiến Trúc Hệ Thống & Giao Thức Truyền Tin - PBL4
+# Kiến trúc đích: phòng thủ đa lớp trên LAN hai máy
 
-**Mã hạng mục:** T1-ALL (Milestone 1 - Tuần 1)  
-**Thành viên thực hiện:**  
-- **Trung (T1-TV1):** Phụ trách `client_node` & `target_server` (Docker network, Linux capabilities, Vulnerable App, OS Agent đọc bảng mạng)  
-- **Trí (T1-TV2):** Phụ trách `hacker_node` (Kịch bản tấn công L2/L4: ARP Spoofing, SYN Flood, TCP RST Injection)  
-- **Nguyên (T1-TV3):** Phụ trách `god_view` (WebSocket Server thu thập log, Mockup UI 4 khu vực thời gian thực)
+Tài liệu mô tả hướng phát triển mới, không khẳng định các thành phần dự kiến
+đã được triển khai. Runtime hiện tại vẫn sử dụng lab Docker cũ.
 
----
+## Vai trò triển khai
 
-## 1. Kiến Trúc Mạng Docker (Docker Network Topology)
+| Máy | Thành phần | Trách nhiệm |
+| --- | --- | --- |
+| Server | `apps/target-app` | Nghiệp vụ ứng dụng và các cơ chế phòng thủ trong ứng dụng |
+| Server | `apps/god-view` | Thu thập, lưu trữ và trực quan hóa sự kiện |
+| Server | `agents/host-agent` (dự kiến) | Đọc trạng thái thật và điều khiển có giới hạn các cấu hình host |
+| Máy thực nghiệm | `attacker` | Thực thi kịch bản với mục tiêu được cấu hình cho phiên lab |
+| Máy thực nghiệm | Client kiểm tra (dự kiến) | Đo tỷ lệ thành công, độ trễ và lỗi của truy cập hợp lệ |
 
-### 1.1. Quy hoạch Subnet & Địa chỉ IP tĩnh (Static IP)
-Toàn bộ 4 container nằm trong một mạng Bridge tự định nghĩa tên là **`cyber_net`** với dải mạng **`172.20.0.0/24`** (Gateway: `172.20.0.1`).
+Hai máy dùng chung LAN, không giả định dải `172.20.0.0/24` hoặc interface
+`eth0` trong kiến trúc đích. Cấu hình IP, cổng và interface cần được thống nhất
+ở bước triển khai LAN; refactor thư mục chưa thay đổi chúng trong runtime.
 
-| Tên Container | Vai trò | Địa chỉ IP tĩnh | Port nội bộ | Port Host | Phụ trách chính |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **`client_node`** | Giả lập người dùng (Gửi HTTP Login & giữ kết nối TCP) | `172.20.0.10` | 3000 | 3000 | Trung (T1-TV1) |
-| **`target_server`** | App Server + Database (SQLite) + OS Agent đọc bảng mạng | `172.20.0.20` | 8080 (HTTP)<br>9000 (TCP) | 8080 | Trung (T1-TV1) |
-| **`hacker_node`** | Máy tấn công (Chứa script ARP, SYN Flood, TCP RST) | `172.20.0.66` | 5000 (Control API) | *Không mở* | Trí (T1-TV2) |
-| **`god_view`** | WebSocket Server thu thập log & Giao diện Thượng đế | `172.20.0.99` | 4000 (WS/API)<br>5173 (Web UI) | 4000<br>5173 | Nguyên (T1-TV3) |
+## Phạm vi các lớp
 
----
+- **Mạng:** chính sách truy cập, lọc và giới hạn lưu lượng.
+- **Hệ điều hành:** bảo vệ TCP, giới hạn tài nguyên và quyền dịch vụ.
+- **Ứng dụng:** truy vấn an toàn, xác thực, phân quyền và giới hạn yêu cầu.
 
-## 2. Hai Luồng Mạng Tách Biệt
+OSI dùng để giải thích vị trí giao thức hoặc tác động của kịch bản. Các phạm
+vi trên không phải ba tầng OSI độc lập; một biện pháp có thể liên quan tới
+nhiều phạm vi. Không đặt mục tiêu triển khai đủ bảy tầng OSI.
 
-1. **Luồng 1 — Luồng Đời thực (Real Traffic):**
-   - Giữa `client_node` (172.20.0.10) và `target_server` (172.20.0.20): Gửi yêu cầu HTTP Login, tải tài nguyên, duy trì phiên kết nối TCP.
-   - `hacker_node` (172.20.0.66) can thiệp vào giữa luồng này để nghe lén gói tin (ARP Spoof), bơm gói RST cắt đứt kết nối hoặc flood gói tin SYN.
+## Luồng dữ liệu dự kiến
 
-2. **Luồng 2 — Luồng Báo Cáo (Telemetry Traffic):**
-   - Cả 3 máy (`client_node`, `target_server`, `hacker_node`) định kỳ và theo sự kiện gửi bản tin JSON về cho `god_view` (`http://172.20.0.99:4000/api/telemetry`).
-   - `god_view` đẩy dữ liệu thời gian thực lên Dashboard qua WebSocket `ws://localhost:4000`.
+1. Máy thực nghiệm gửi lưu lượng tới ứng dụng trên máy server.
+2. Client kiểm tra tạo lưu lượng hợp lệ để đo khả năng phục vụ.
+3. Ứng dụng và host-agent ghi nhận quan sát độc lập ở phía phòng thủ.
+4. God-View tiếp nhận sự kiện, gắn với phiên thực nghiệm và cập nhật dashboard.
+5. Kết quả của từng phiên được lưu để so sánh trước/sau và giữa các cấu hình.
 
----
+Sự kiện do attacker phát ra chỉ chứng minh hành động đã được thực thi, không
+tự chứng minh tấn công thành công hoặc phòng thủ hiệu quả. Sự kiện phía
+server và phép đo client phải cung cấp bằng chứng tương ứng.
 
-## 3. Đặc Tả 3 Kịch Bản Tấn Công Mạng (T1-TV2 - Trí)
+God-View cần phân biệt mất telemetry với dịch vụ mục tiêu bị lỗi. Việc đặt
+chung máy không có nghĩa là khả năng quan sát sẽ luôn duy trì khi host quá tải.
 
-### Kịch bản 1: ARP Spoofing + Sniffing (Tấn công Lớp 2 - Data Link)
-- **Lệnh thực thi:** `arpspoof -i eth0 -t 172.20.0.10 -r 172.20.0.20`
-- **Hiện tượng & Dữ liệu:**
-  - Bảng ARP của Client và Server bị ghi đè: cả hai đều trỏ về địa chỉ MAC của Hacker (`MAC_HACKER`).
-  - Khi Client gửi `POST /api/login` (chứa username/password), gói tin bị bẻ cong đi qua Hacker (`172.20.0.66`). Script Scapy của Trí bắt được gói tin HTTP và trích xuất thông tin gửi về God-View.
+## Ranh giới module
 
-### Kịch bản 2: TCP SYN Flood bằng `hping3` (Tấn công Lớp 4 - Transport)
-- **Lệnh thực thi:** `hping3 -S -p 8080 --rand-source --interval u1000 172.20.0.20`
-- **Hiện tượng & Dữ liệu:**
-  - Hàng trăm cờ SYN từ IP giả mạo gửi đến Server làm số lượng kết nối `SYN_RECV` tăng vọt lấp đầy hàng đợi backlog.
-  - Client thử gửi request thì bị Timeout.
-  - **Phòng thủ:** Server bật `sysctl -w net.ipv4.tcp_syncookies=1` $\rightarrow$ Server kích hoạt SYN Cookies và Client truy cập lại bình thường.
+- `apps` chứa nghiệp vụ ứng dụng và quan sát; không nhúng quyền quản trị host
+  vào ứng dụng mục tiêu.
+- `agents/host-agent` dự kiến cung cấp thao tác quản trị giới hạn, kiểm tra
+  trạng thái thực tế sau khi áp dụng và khả năng khôi phục cấu hình.
+- `attacker` chứa runner và worker; không chứa logic quyết định kết quả phòng thủ.
+- `packages/shared` chứa hợp đồng dữ liệu chung, tránh import xuyên vào mã
+  nội bộ của ứng dụng khác.
+- `deploy` chứa cách đóng gói và triển khai theo vai trò.
+- `experiments` mô tả điều kiện, phép đo và cách đánh giá từng kịch bản.
 
-### Kịch bản 3: TCP RST Injection bằng `tcpkill` / Scapy (Tấn công Lớp 4 - Cắt đứt kết nối)
-- **Lệnh thực thi:** `tcpkill -i eth0 host 172.20.0.10 and port 8080` (hoặc script Scapy đọc seq/ack rồi bơm gói TCP RST giả mạo).
-- **Hiện tượng & Dữ liệu:**
-  - Kết nối `ESTABLISHED` trên bảng TCP của Server biến mất ngay lập tức.
-  - Client nhận lỗi `Connection reset by peer` (Mất kết nối đột ngột).
+## Phạm vi thực nghiệm
 
----
+Ưu tiên các kịch bản chạy được trên hai máy: kiểm tra chính sách truy cập,
+SYN Flood có giới hạn trong lab, HTTP load/DoS và SQL injection. Bộ kịch bản
+cuối cùng phụ thuộc hệ điều hành và các cơ chế phòng thủ được nhóm chọn.
 
-## 4. Quy Tắc Thiết Kế Giao Diện Mockup God-View (T1-TV3 - Nguyên)
+ARP MITM và các kịch bản cần theo dõi một luồng client nạn nhân riêng, bao gồm
+TCP RST hiện tại, không phải yêu cầu bắt buộc. Mã cũ được giữ để tương thích,
+không được dùng làm tiêu chí hoàn thành mô hình mới.
 
-Giao diện Dashboard của God-View được chia làm **4 khu vực trực quan**:
+## Việc còn lại sau refactor
 
-1. **Khu vực 1 - Sơ đồ Topology Mạng (Giữa màn hình):**
-   - 3 Node chính: Client (`172.20.0.10`), Server (`172.20.0.20`), Hacker (`172.20.0.66`).
-   - Bình thường: Đường nối xanh lá thẳng Client ↔ Server.
-   - Khi `attack_mode == "ARP_SPOOF"`: Đường nối thẳng bị mờ đi, xuất hiện đường màu cam đi vòng: Client → Hacker → Server.
-   - Khi `attack_mode == "SYN_FLOOD"`: Hàng loạt chấm đỏ bắn liên tục từ Hacker → Server, Node Server nhấp nháy cảnh báo quá tải.
-   - Khi `attack_mode == "TCP_RST"`: Tia sét màu đỏ từ Hacker đánh vào đường nối Client - Server làm đứt đôi kết nối.
-2. **Khu vực 2 - Bảng ARP Cache (Góc trái dưới):**
-   - Ánh xạ IP $\rightarrow$ MAC của Client và Server. Khi bị ARP Spoofing, dòng bị giả mạo chuyển sang nền đỏ (`POISONED!`).
-3. **Khu vực 3 - Bảng Trạng thái TCP & OS Config (Góc phải trên):**
-   - Thanh trạng thái `syn_cookies: OFF/ON`.
-   - Bộ đếm `SYN_RECV` (tăng vọt khi bị SYN Flood).
-   - Danh sách các kết nối `ESTABLISHED` (biến mất khi bị TCP RST Injection).
-4. **Khu vực 4 - Live Terminal Log (Góc dưới cùng):**
-   - Nối chuỗi trường `payload.terminal_log` từ cả 3 node theo thứ tự thời gian.
-   - Phân biệt màu chữ: Xanh dương (CLIENT), Xanh lá (SERVER), Đỏ (HACKER).
+1. Chốt hệ điều hành, cách chạy dịch vụ và cấu hình LAN hai máy.
+2. Thay địa chỉ/interface cố định bằng cấu hình phiên lab.
+3. Thay OS Agent mô phỏng bằng dữ liệu và thao tác host thực tế.
+4. Bổ sung các cơ chế phòng thủ cùng cấu hình thử nghiệm riêng biệt.
+5. Mở rộng schema, lưu trữ sự kiện và giao diện theo từng lớp phòng thủ.
+6. Chạy thử nghiệm có thể lặp lại và tổng hợp số liệu cho báo cáo.
+
+Thiết kế cũ được lưu tại [legacy/system-architecture.md](legacy/system-architecture.md).

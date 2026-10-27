@@ -1,0 +1,13 @@
+.git
+**/node_modules
+**/dist
+**/__pycache__
+**/*.pyc
+**/*.sqlite
+**/*.sqlite3
+**/*.db
+**/.env
+**/.env.*
+**/*.log
+docs
+experiments

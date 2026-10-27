@@ -2,32 +2,39 @@
   "name": "pbl4-cyber-simulation",
   "version": "1.0.0",
   "private": true,
-  "description": "PBL4 - He thong mo phong va giam sat tan cong mang",
+  "description": "PBL4 - Multi-layer defense and real-time event visualization for client-server systems",
   "workspaces": [
-    "shared",
-    "target-app/server",
-    "target-app/client",
-    "attacker-controller",
-    "god-view/server",
-    "god-view/client"
+    "packages/shared",
+    "apps/target-app/server",
+    "apps/target-app/client",
+    "attacker",
+    "apps/god-view/server",
+    "apps/god-view/client"
   ],
   "scripts": {
     "build": "npm run build --workspaces",
-    "start:target": "npm run start --workspace=target-app/server",
-    "start:attacker": "npm run start --workspace=attacker-controller",
-    "start:godview": "npm run start --workspace=god-view/server",
-    "dev:target": "npm run dev --workspace=target-app/server",
-    "dev:attacker": "npm run dev --workspace=attacker-controller",
-    "dev:godview": "npm run dev --workspace=god-view/server"
+    "start:target": "npm run start --workspace=@pbl4/target-server",
+    "start:attacker": "npm run start --workspace=@pbl4/attacker-controller",
+    "start:godview": "npm run start --workspace=@pbl4/godview-server",
+    "dev:target": "npm run dev --workspace=@pbl4/target-server",
+    "dev:attacker": "npm run dev --workspace=@pbl4/attacker-controller",
+    "dev:godview": "npm run dev --workspace=@pbl4/godview-server",
+    "attack:cli": "npm run attack:cli --workspace=@pbl4/attacker-controller",
+    "lab:up": "docker compose -f deploy/local/compose.yaml up --build -d",
+    "lab:down": "docker compose -f deploy/local/compose.yaml down",
+    "lab:logs": "docker compose -f deploy/local/compose.yaml logs -f"
   },
   "keywords": [
     "cybersecurity",
-    "sqli",
-    "dos",
-    "mitm",
+    "defense-in-depth",
+    "client-server",
     "telemetry",
     "typescript"
   ],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "engines": {
+    "node": ">=20 <21",
+    "npm": ">=10"
+  }
 }
